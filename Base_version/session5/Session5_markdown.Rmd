@@ -1,0 +1,323 @@
+---
+title: "RAS Case study in R: Childhood vaccination coverage survey in Greece, 2006"
+author: "Alexander Spina (AGES),  and Patrick Keating (AGES)"
+date: "02 May 2017"
+output: word_document
+geometry: margin = 1.5cm
+
+---
+**Contributors to *R* code:**  
+The following code has been adapted to *R* for learning purposes. The initial contributors are listed below. All copyrights and licenses of the original document apply here as well. 
+
+**Authors:**  
+Kostas Danis, Dimitris Papamichail and Takis Panagiotopoulos
+
+# Prerequisites#
+Participants are expected to be familiar with data management and basic analysis in R
+
+# An introduction to the R companion#
+This text was adapted from the introduction used at the 2016 TSA module.
+
+R packages are bundles of functions which extend the capability of R. Thousands of add-on packages are available in the main online repository (known as CRAN) and many more packages in development can be found on GitHub. They may be installed and updated over the Internet.
+
+We will mainly use packages which come ready installed with R (base code), but where it makes things easier we will use add-on packages. In addition, we have included a few extra functions to simplify the code required. All the R packages you need for the exercises can be installed over the Internet.
+
+```{r, eval=FALSE, results='hide', message=FALSE, warning=FALSE}
+# Installing required packages for the week
+required_packages <- c("foreign", "survey", "broom")
+
+install.packages(required_packages)
+```
+
+```{r, echo = FALSE, eval=FALSE, results='hide', message=FALSE, warning=FALSE}
+# Installing required packages for the week
+required_packages <- c("foreign", "survey", "broom", "knitr")
+
+install.packages(required_packages)
+```
+
+Run the following code at the beginning of the caset study to make sure that you have made available all the packages and functions that you need. Be sure to include it in any scripts too.
+
+```{r, eval = F, results='hide', message=FALSE, warning=FALSE}
+# Loading required packages for the week
+required_packages <- c("foreign", "survey", "broom")
+
+for (i in seq(along = required_packages))
+  library(required_packages[i], character.only = TRUE)
+```
+
+```{r, echo=FALSE, eval= TRUE, results='hide', message=FALSE, warning=FALSE}
+# Loading required packages for the week
+required_packages <- c("foreign", "survey", "broom", "knitr")
+
+for (i in seq(along = required_packages))
+  library(required_packages[i], character.only = TRUE)
+```
+
+```{r}
+# Function to make tables with counts and proportions 
+big.table <- function(data) {
+  count <- table(data)
+  prop <- round(prop.table(count)*100, digits = 2)
+  cbind(count,
+        prop) 
+}
+
+# Function used to calculate weighted proportions, CI and design effect
+svy_prop <- function(x, design) {
+p1 <- round(svyciprop(as.formula(paste0( "~" , x)), design, na.rm = T) * 100, digits = 2)
+p2 <- round(confint(p1) * 100, digits = 2)
+p3 <- deff(round(svymean(as.formula(paste0( "~" , x)), design, na.rm = T, deff = T) * 100, digits = 2))
+p4 <- cbind("Proportion" = p1, p2, "Design effect" = p3)
+}
+
+# Function used to calculate weighted proportions, CI and design effect for categorical variables
+svy_prop_cat <- function(x, dataset, designids, designweight, designstrata){
+  
+  #create a list to save outputs in 
+  
+  outer <- list() 
+  
+  #change each of the variables of interest to factor
+  dataset[,x] <- as.factor(dataset[,x])
+  
+  #For each level of the categorical variable of interest
+  for (i in levels(dataset[,x])){
+    
+    #create a new binary variable called var temp for each level
+    dataset[,paste0(x, "temp")] <- ifelse(dataset[,x] == i, 1, 0)
+    
+    #define your design
+    design <- svydesign(ids = as.formula(paste0("~",designids)), 
+                        weights = as.formula(paste0("~",designweight)), 
+                        strata = as.formula(paste0("~",designstrata)), 
+                        data = dataset)
+    
+    #use the svy_prop function on binary variable
+    overall <- svy_prop(paste0(var ,"temp"), design = design)
+    
+    #label the rows of your output with the variable and category level
+    rownames(overall) <- paste0(var,": ", i)
+    
+    #save within the list 
+    outer[[var]][[i]] <- overall
+  }
+  
+  #bind the output from the list in to a dataframe
+  do.call(rbind, outer[[1]][1:length(outer[[1]])])
+} 
+
+```
+
+R and Stata have minor differences in default settings and methods. In this document we will follow the Stata analysis as closely as possible, but small and usually unimportant differences may be noted between the statistical findings in R and those in Stata. Despite the differences, the findings from each statistical package should be comparable. At some points additional steps (which would usually be optional in R) will be taken to produce output which is comparable to that of Stata.
+
+The big.table function uses data directly and allows combining of counts, proportions and cumulative sums, thus reducing the number of lines of code required for descriptive analyses. The svy_prop function is used to calculate proportions, CIs, and the design effect of weighted variables. The svy_prop_cat function does the same as svy_prop, but specifically for each level of a categorical variable.
+
+You will work with Stata.dta data sets which can be loaded into R with the "foreign" or "readstata13" packages. The appropriate functions to use will be indicated.
+
+R can hold one or many data sets in memory simultaneously, so there is usually no need to save intermediate files or close and re-open datasets.
+
+
+# Session 5 - Crude analysis
+
+Start a new R script, name it, for example, **session5.r** and save it in your working directory. Write all commands in the R script so that you can run (and re-run) it when needed during the exercise.
+
+```{r, echo = FALSE, eval = FALSE}
+setwd("N:/MED/IMED-VIE/INFE/Public/CC-INFE-Schmid/EPIET/Learning R/R Case studies/RAS 2017/Session5")
+
+```
+
+Open the **vaccine5.dta** dataset  
+```{r}
+vaccine <- read.dta("vaccine5.dta", convert.factors = FALSE)
+```
+
+
+
+## Task 5.1 - Describe parental characteristics, beliefs towards vaccination
+In the original database, 175 parental questionnaires were excluded from further analysis, as some of their answers on beliefs and attitudes were found inconsistent. For simplicity reasons, you will now use vaccine5.dta for further analysis.  
+
+* Recode the following variables and add labels:
+    * Mother's age (mage; <25, 25-29, ???30 years)
+    * Number of other siblings in the family (osib1; ???3, 1-2, 0 other siblings) 
+
+
+* Calculate proportions (and corresponding 95%CI) allowing for the weights, stratification and clustering. Complete Table 5.1. 
+
+## Help, Task 5.1
+
+Firstly, recoding the variables.  
+```{r}
+vaccine$mage2 <- cut(vaccine$mage,
+                     breaks = c(0,24, 29, 100), 
+                     labels = c("0-24", "25-29", ">30"))
+
+
+vaccine$osib2 <- cut(vaccine$osib1, 
+                     breaks = c(-1,0, 2,100),
+                     labels = c("0", "1-2", ">3"))
+```
+
+Calculate weighted proportions (and corresponding 95%CI).
+
+
+```{r}
+# Specify the design to include weights, clustering and stratification
+design <- svydesign(ids = ~school, weights = ~weight, strata = ~strata, data = vaccine)
+
+
+# To complete table 5.1, select the following variables
+varsbin <- c("uncritical", "a1x1g", "a1x2g", "a1x5g", "a3x1g", "a3x2g", "a3x5g")
+
+# Create a list to store the output
+output <- list()
+
+# Apply the svy_prop function to each variable
+for (var in varsbin) {
+  overall <- svy_prop(var, design = design)
+  output[[var]] <- overall
+}
+
+# Convert the list to a matrix to condense all the output
+outputa <- do.call(rbind, output[1:length(output)]) 
+
+# Convert the output to a data frame
+outputa <- as.data.frame(outputa)
+```
+```{r, echo = FALSE}
+kable(outputa, digits = 5)
+```
+
+Repeat the above steps, but this time for categorical variables.  
+
+```{r}
+# List your categorical variables of interest
+varscat <- c("minority", "mage2", "osib2", "educf", "a1posg")
+
+# Create a list to store the output
+output2 <- list()
+
+# Apply svy_prop_cat to each variable of interest
+for (var in varscat) {
+  overall <- svy_prop_cat(var, dataset = vaccine, designids = "school", designweight = "weight", designstrata = "strata")
+  output2[[var]] <- overall
+}
+
+# Convert the list to a matrix to condense all the output
+output2a <- do.call(rbind, output2[1:length(output2)]) 
+
+# Convert the output to a data frame
+output2a <- as.data.frame(output2a)
+
+``` 
+```{r, echo = FALSE}
+kable(output2a, digits = 5)
+```
+
+
+* Summarising the findings on parents' opinions towards vaccination and perceived barriers to vaccination.
+
+Parents/guardians indicated a high degree of perceived necessity of immunization with the vast majority agreeing that vaccination is beneficial for their children. In addition, 76% considered that vaccines are completely safe and never harm child health and 45% felt that children should be immediately immunized with every newly introduced vaccine (data not shown here), reflecting an uncritical positive opinion on vaccination. Only 3% feared that vaccines may expose their child to a substantial risk, suggesting minimal concerns over the side effects of vaccines. Nevertheless, one fifth reported that natural childhood disease may be preferable to vaccination, reflecting perceptions of less susceptibility to and severity of vaccine preventable diseases. More skepticism was observed regarding new vaccines and accuracy of recommendations with approximately one third feeling confused due to conflicting physicians' opinions, almost half stating the need to cross-check doctors' recommendations and about 60% believing that new vaccines are developed for financial profit (data not shown here). Despite these statements, however, parents/guardians indicated a high degree of compliance with the current official recommendations on vaccination, with almost all stating that they would keep their child's immunization up-to-date, following the current scientific advice (data not shown).
+
+Among all respondents, cost (including the cost of the visit to an immunization provider, the fee for vaccine administration and the cost of the vaccine itself) was the barrier most commonly identified. About one fifth of respondents cited long distance to vaccination location and/or inconvenient opening hours of the immunization sites as important barriers to immunization. Other obstacles less commonly reported (not shown here) included lack of accurate information regarding immunization, unfriendly behavior of immunization staff or bad organization of services, lack of confidence in social insurance doctors, lack of paediatricians and long waiting times for appointments. 
+
+
+
+## Task 5.2 - Identify unadjusted determinants of vaccination coverage
+Continue with the previous dataset.
+
+*	Calculate the appropriate measures of association (and corresponding 95%CI) between factors presented in table 5.2 and complete vaccination. Complete Table 5.2. The measures of association should allow for the weights, stratification and clustering. Interpret the results. You may use svyglm function.
+
+## Help, Task 5.1
+
+Calculate prevalence ratios for each of the variables in table 5.2. To adjust for the sampling design, we must specify the design prior to running any regression models.
+
+```{r}
+design <- svydesign(ids = ~school, weights = ~weight, strata = ~strata, data = vaccine)
+```
+
+To calculate weighted proportions and PRs from the weighted proportions, you may use the **svyglm** function. 
+
+More information can be found in R help, but the essentials are summarised below:  
+
+*svyglm(formula, design, family = NULL, data = NULL)*
+
+* **formula**:    designates the model formula (outcome and predictor variables to include)
+* **design**:     the object created using svydesign 
+* **family**:     specifies the distribution of dependent variable,the link specifies the link function; the default is the canonical link for the family() specified.
+* **data**:       specifies the relevant data frame    
+
+
+For binomial and Poisson families use **family=quasibinomial() and family=quasipoisson()** to avoid a warning about non-integer numbers of successes. The 'quasi' versions of the family objects give the same point estimates and standard errors and do not give the warning.
+
+
+Below is an example using a3x4g as a predictor variable.  
+
+```{r}
+model <- svyglm(vacful ~a3x4g, 
+                data = vaccine,
+                family = quasibinomial(link = "log"),
+                design = design)
+
+# The model is exponentiated in order to obtain the PRs
+ model1 <- tidy(model, exponentiate = TRUE, conf.int = TRUE)
+```
+
+```{r, echo = FALSE}
+kable(model1, digits = 5)
+```
+
+PR=0.98 suggests that the complete vaccination uptake was almost equal among children whose parents/guardians perceived cost of the vaccines as a major barrier to immunization and those who did not.
+
+
+
+#### Calculate the appropriate measures of association (and corresponding 95% CI) between factors presented in table 5.2  and complete vaccination status.
+
+This can be done using a loop as below:
+
+```{r}
+# Specify the variables of interest
+vars <- c("minority", "mageg", "educf", "osibg", 
+          "a1posyn", "a1posg", "uncritical", 
+          "a1x1g", "a1x2g", "a1x5g", "a3x1g", "a3x2g", "a3x5g")
+
+# Create a loop to store the output
+output3 <- list()
+
+# Run svglm for each variable
+for (var in vars) {
+  
+  form <- formula(paste0("vacful ~ factor(",var,")"))
+  
+  model2 <- svyglm(form,
+                 data = vaccine,
+                 family = quasibinomial(link = "log"),
+                 design = design)
+  
+  model3 <- tidy(model2, exponentiate = TRUE, conf.int = TRUE)
+  
+  output3[[var]] <- model3
+}
+```
+```{r, echo = FALSE}
+
+potato <- do.call(rbind, output3[1:length(output3)])
+
+rownames(potato) <- NULL
+
+kable(potato, digits = 3)
+```
+
+**Summarizing the results**
+
+* Socioeconomic factors    
+Children were less likely to be completely vaccinated if they belonged to a minority group, were born to a younger mother, had many siblings or their parents/guardians were less educated (Table 1). The weighted proportions of children with complete vaccination among households with 3 or more children were 26% and 38% lower, respectively, compared with those of households with only one child.  
+
+* Beliefs and attitudes towards immunization  
+Children whose parents had a positive opinion regarding immunization had 23% and 16% higher complete vaccination coverage, respectively. However, these associations were not statistically significant. Complete vaccination coverage was 11% lower in children of parents/guardians reporting that natural childhood disease may be preferable to vaccination.
+
+* Barriers to immunization  
+Complete vaccination was lower in children of parents/guardians who perceived long distance to immunization site, as a major barrier to immunization. Children whose parents/guardians reported inconvenient opening hours as a barrier to vaccination were less likely to be completely vaccinated.
+
+
+
