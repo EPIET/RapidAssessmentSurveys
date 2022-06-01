@@ -1,0 +1,1485 @@
+---
+title: "RAS Case study in R" 
+subtitle: "Childhood vaccination coverage survey in Greece, 2006"
+author: "Amy Mikhail and Alexander Spina (Applied Epi)"
+date: "Date revised: 27 May 2022"
+output:
+  html_document:
+    code_folding: hide
+    toc: yes
+    toc_depth: 2
+  pdf_document:
+    toc: yes
+    toc_depth: '2'
+  word_document:
+    toc: yes
+    toc_depth: '2'
+theme: sandstone
+geometry: margin = 1.5cm
+editor_options: 
+  markdown: 
+    wrap: 72
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, 
+                      results = 'hide', 
+                      message = FALSE, 
+                      warning = FALSE)
+```
+
+**Contributing authors and version history:**
+
+This case study was originally written by the following authors:
+
+-   Kostas Danis
+-   Dimitris Papamichail
+-   Takis Panagiotopoulos
+
+An R companion guide for the computer practicals accompanying the case
+study was developed in 2017 by:
+
+-   Patrick Keating
+-   Alexander Spina
+-   Alexandre Blake
+
+This was updated in 2018 by:
+
+-   Ashley Sharpe
+
+Further updates were made in 2022, to replace base R code with more
+modern functions from `tidyverse` packages and to add an alternative
+mixed-methods based approach for section 6 following discussions with
+the module organizers, by:
+
+-   Amy Mikhail
+-   Alexander Spina
+
+All copyrights and licenses of the original document apply here as well.
+
+\newpage
+
+# Introduction to the R companion guide
+
+This guide is an R companion guide to the main case study document.
+Participants are advised to follow the case study sections in the main
+document to read the background information for each task, and refer to
+this document for every exercise that requires some analysis to be
+performed. For convenience, the questions for each analysis task have
+also been reprinted here.
+
+Note that this guide has been updated to use readily available and
+currently maintained R packages. As such, there may be some minor
+differences in approach or results when compared to STATA. To read more
+about the methods underlying each R function, see the relevant help
+file, e.g. `?package::function`.
+
+## Prerequisites
+
+Participants are expected to be familiar with data management and basic
+analysis in R and RStudio. It is advisable to have up-to-date versions
+of both softwares installed. The code in this guide was updated and
+tested using:
+
+-   R version 4.1.3 (2022-03-10)
+-   RStudio version 2022.02.0 Build 443
+
+## R packages
+
+This guide uses packages from the `tidyverse` which are being used more
+and more for data analysis, due to their easy to read and efficient
+coding syntax. The approach for setting up an RStudio project, importing
+and cleaning data and managing code, as well as creating summary tables
+and graphs follows that presented in the [Epidemiologist R
+handbook](https://epirhandbook.com/en/) (click on the link to access
+it).
+
+The packages required for this case study can be installed by running
+the code below. This code has also been made available as a separate R
+script. It uses the `pload()` function from the `pacman` package as this
+will check the user's library for required packages, install them if
+they are missing, and then load them into the current R session. This
+code should therefore be rerun at the beggining of each session, to
+ensure that all the required libraries are loaded.
+
+```{r packages, eval=TRUE, results='hide', message=FALSE, warning=FALSE}
+
+# Packages to install *before* running pacman pload():
+#####################################################
+
+# Ensures the package "pacman" is installed
+if (!require("pacman")) install.packages("pacman")
+
+# Additional package for mixed effects modelling:
+remotes::install_github("goodekat/redres")
+
+# Install and/or load required packages:
+########################################
+pacman::p_load(
+  
+  # Project and file management
+  #############################
+  here,      # file paths relative to R project root folder
+  rio,       # import/export of many types of data
+  openxlsx,  # import/export of multi-sheet Excel workbooks
+  rmarkdown, # reading and printing RAS R markdown guide
+  knitr,     # reading and printing RAS R markdown guide
+  
+  # Package install and management
+  ################################
+  pacman,   # package install/load
+  remotes,  # install from github
+  
+  # General data management
+  #########################
+  tidyverse,   # includes many packages for tidy data wrangling:
+  #dplyr,      # data management
+  #tidyr,      # data management
+  #ggplot2,    # data visualization
+  #stringr,    # work with strings and characters
+  #forcats,    # work with factors 
+  #lubridate,  # work with dates
+  #purrr       # iteration and working with lists
+  janitor,     # data cleaning
+  plotly,      # Interactively inspecting exploratory graphs
+  
+  # Exploratory graphs:
+  #########################
+  metR,         # Filled contours used with ggplot2
+  gridExtra,	 # Plotting ggplot2 graphs side by side
+ 
+  
+  # Summary tables:
+  #########################
+  flextable,   # Creating printable summary tables
+  officer,     # Fine tuning flextables
+  DT, 			   # Interactive tables
+  broom,       # Extracting summary information from models
+  gtsummary,   # making descriptive and statistical tables
+  smd,         # Helper functions for gtsummary tables
+  expss,       # Labelling variables and values
+  rstatix,     # quickly run statistical tests and summaries
+  scales,      # helper functions
+  
+  # RAS analysis:
+  #########################
+  # Package functions will be explained in the guide
+  pps,
+  sampler,
+  randomNames,
+  srvyr,
+  survey,
+  epikit,
+  epiR,
+  Hmisc,
+  redres,
+  gmodels,
+  multcomp,
+  leaps,
+  car,
+  lme4,
+  lmerTest,
+  performance,
+  optimx,
+)
+
+
+
+```
+
+\newpage
+
+## Data management
+
+**File organisation:**
+
+The R practical material for this case study is stored in a folder
+called `rvcs_2022`. Please download this folder from EVA and save it on
+your computer.
+
+There is an R project file (`.Rproj`) in this folder and we suggest you
+begin this practical session by double clicking on this file to open it.
+
+You can then create a new R script called `vcsurvey.R` and save it in
+the `rvcs_2022` folder.
+
+The data sets have been stored in a sub-folder called `data`.
+
+Note that the relative file paths used for importing data in this guide
+assume the above folder structure.
+
+**Importing data sets:**
+
+The data sets can be easily imported using the `import()` function from
+the `rio` package, combined with the `here` package to construct
+relative file paths.
+
+Most of the data sets are STATA `.dta` files, while one file for the
+first exercise is a Microsoft Excel workbook. Both file types can be
+read in to R using `rio::import()` and specifying the relevant
+arguments.
+
+\newpage
+
+# Guidance and code for practical sessions
+
+In the sections below, you will find a brief background and description
+for each task, followed by an explanation of how to complete the task
+using R, that highlights suggested packages and functions. This is then
+complemented by some example code.
+
+The example code has been presented in full, so that you can reference
+it when undertaking similar analyses with your own data in future. If
+you are working from the HTML version of this document, the code will
+initially remain hidden, so that you can attempt to write your analysis
+script using just the R coding tips as a guide if you wish. To reveal
+the code, click on the `code` button that appears at the top of each
+coding section.
+
+Notes:
+
+-   Only the tasks which require data manipulation or analysis in R are
+    reprinted below
+
+-   Begin with the main case study guide and refer to this R companion
+    when a task is introduced that requires computational analysis.
+
+-   To undertake the practical tasks, you will need to create your own R
+    script and either write your own code (using the R coding tips in
+    this document and package help files as a guide) or copy the example
+    code into your script and run it, to see the results.
+
+\newpage
+
+## Session 1: Sampling frames
+
+### Task 1.2 - stratified proportional sampling
+
+**Background:**
+
+In the main guide, you have been provided with the background and aims
+of this case study, which is to undertake a vaccination coverage survey
+in school children in Greece. A two-step stratified proportional cluster
+sampling strategy has been selected. Your first task is to calculate the
+number of classes to sample in each region and rural / urban stratum:
+
+**Task instructions:**
+
+Using the data provided in table 1.2 below (which can be imported into R
+from the `table1_2` worksheet of the `Sampling_frames.xlsx` Microsoft
+Excel workbook in the `data` sub-folder):
+
+1.  Within each region, calculate the number of clusters (school
+    classes) to sample from;
+
+2.  Calculate the number of classes for each urban / rural stratum
+    relative to the population size;
+
+3.  Aim to include 50 school classes from each region;
+
+4.  Assume that all school classes have an equal number of students;
+
+5.  Complete table 1.2 in the main case study guide with your results
+    (percentage and number of classes to sample for each urban and rural
+    stratum in each of the 6 regions).
+
+| Region                 |  Urban |  Rural |  TOTAL |
+|------------------------|-------:|-------:|-------:|
+| Thraki                 |  11624 |   6884 |  18508 |
+| Macedonia-Thessalia    | 116322 |  47101 | 163423 |
+| Ipeiros-Ionian Islands |  11446 |  15449 |  26895 |
+| Peloponissos-Sterea    |  55770 |  44132 |  99902 |
+| Attiki                 | 174493 |   1667 | 176160 |
+| Crete-Aegean Islands   |  36374 |  24752 |  61126 |
+| **TOTAL**              | 406029 | 139985 | 546014 |
+
+: Table 1.2 - Number of children aged 5 - 9 years in Greece by region
+and urban/rural area
+
+**R coding tips:**
+
+First, import the summary data from table 1.2.
+
+This table is currently in wide format, but to calculate the number of
+classes to sample from in each strata, it needs to be converted to wide
+format (i.e. 'tidy data') so that a single column defines the strata
+(urban or rural) and another column contains the population for each
+stratum. We can do this with the `tidyr::pivot_longer()` function.
+
+We can then calculate the relative proportions in each stratum and from
+there determine the number of school classes to sample (out of 50) for
+each stratum within each region:
+
+```{r sframe_import, eval=TRUE}
+
+# Import sample frame for regions:
+regions <- rio::import(here(file = "data", "Sampling_frames.xlsx"),
+                         which = "table1_2")
+
+# Create new table for results:
+rsf_long <- regions %>% 
+  
+  # Convert table to tidy data:
+  tidyr::pivot_longer(cols = 2:3,                    # Convert to tidy format
+                      names_to = "Stratum",          # Store strata in new col
+                      values_to = "Population") %>%  # Store population in new col
+  
+  # Calculate proportions and number of classes to sample:
+  mutate(Proportion = Population/Total,              # Calculate proportions
+         Nclasses = round(50*Proportion, digits = 0))# Calculate number of classes
+
+  
+
+```
+
+\newpage
+
+### Task 1.3 - simple random sampling
+
+**Background:**
+
+Table 1.3 is part of the sampling frame for the stratum "rural areas of
+the region of Peloponissos-Sterea", where all schools have only one
+first grade school-class.
+
+**Task instructions:**
+
+1.  Generate a simple random sample of 22 school classes using random
+    number selection;
+
+2.  Identify the selected school classes in the sampling frame (table
+    1.3);
+
+3.  Calculate the sampling fraction.
+
+**R coding tips:**
+
+The sampling frame (list of school classes in the Peleponissos-Sterea
+region) can be imported from the `Sampling_frames.xlsx` workbook
+(`table1_3` is the name of the worksheet).
+
+The simple random sample of 22 classes can then be identified using the
+`dplyr` convenience function `slice_sample()` to return a random subset
+of 22 rows of the original sampling frame.
+
+```{r simple_random_sample, eval=TRUE}
+
+# Import the sampling frame of school classes in Peleponissos-Sterea:
+class_frame <- rio::import(here(file = "data", "Sampling_frames.xlsx"),
+                         which = "table1_3")
+
+
+# Perform a simple random sample to select 22 classes from the list:
+class_list <- class_frame %>% 
+  
+  # Subset the simple random sample of 22 classes:
+  slice_sample(n = 22) %>% 
+  
+  # Arrange results in ascending order by ID:
+  dplyr::arrange(ID)
+
+```
+
+The sampling fraction is the number of units sampled divided by the
+total number of units in the sampling frame, i.e.:
+
+```{r sample_fraction, eval=TRUE}
+
+# Calculate the sampling fraction for this example:
+sample_fraction <- round(22/nrow(class_frame), digits = 2)
+
+```
+
+\newpage
+
+### Task 1.4 - systematic sampling
+
+**Background:**
+
+Systematic sampling is similar to simple random sampling except that the
+total sampling frame is divided by the desired number of sampling units
+to select and every *nth* row of the sampling frame is selected
+according to the result. This can be useful when subjects are being
+prospectively recruited to a study, when the total size of the sampling
+frame is not yet clear or when it is necessary to ensure consistent
+sampling over multiple days with an unknown number of subjects recruited
+per day.
+
+**Task instructions:**
+
+1.  Use the same sampling frame as for the previous section
+    (`class_frame`);
+
+2.  Divide the total number of classes in the sampling frame by the
+    desired number of units to sample (22) to calculate the group size;
+
+3.  Randomly select one number *n* from this group size;
+
+4.  Select every *nth* row of the sampling frame to produce the
+    systematic sample;
+
+5.  Limit the number of returned rows to the desired number of units to
+    sample (22).
+
+**R coding tips:**
+
+After calculating the size of the groups to divide the sampling frame
+into, we can select a random number from this group size using the base
+R function `sample.int()`.
+
+This random number can then be fed into the `dplyr::filter()` command as
+shown below to select every *nth* row of the sampling frame. Note that
+if *n* is small / an early number in the sequence, an excess of rows may
+be selected. If this happens, the returned rows can be limited to the
+desired sample size by using the `dplyr::slice_head()` function:
+
+```{r systematic_sample, eval=TRUE}
+
+# Calculate the random starting point for systematic sampling:
+sample_start <- sample.int(n = nrow(class_frame)/22, size = 1)
+
+# Now subset the sampling frame and filter for every nth row:
+class_system <- class_frame %>% 
+  
+  # Select every nth row from the sampling frame
+  filter(row_number() %% sample_start == 1) %>% 
+  
+  # Limit the number of returned rows to the desired sample size (22)
+  slice_head(n = 22)
+  
+```
+
+\newpage
+
+### Task 1.5 - Probability Proportional to Size sampling
+
+**Background:**
+
+The researchers originally chose to use school classes as the sampling
+units, because it was assumed that all classes had similar numbers of
+students. An alternative sampling unit would be the schools themselves;
+however unlike for classes, the number of students in each school varies
+widely.
+
+Probability proportional to size (PPS) sampling is a method that takes
+varying sample sizes in the sample units into account. This helps to
+avoid under-representing one subgroup in a study and yields more
+accurate results.
+
+In this case study, you have been provided with a list of schools in
+urban areas of Attiki, which also indicates the number of grade 1
+students in each school and the number of classes. This data set can be
+imported from the `table1_5` worksheet in the `Sampling_frames.xlsx`
+workbook. Schools can be selected adjusting for the size of the student
+population, by performing PPS sampling. The column containing the number
+of students in each school is used as input.
+
+**Task instructions:**
+
+1.  Use the sampling frame for Attiki schools in urban areas presented
+    in `table1_5`
+
+2.  Select 12 schools by probability proportional to size sampling
+    *without replacement*
+
+3.  Indicate which schools have been selected in table 1.5 in the main
+    case study guide
+
+**R coding tips:**
+
+There are several packages available on CRAN that can perform PPS
+sampling. In the example code below, we will use the `sampford()`
+function from the `pps` package to perform the sampling without
+replacement, which uses the classic method developed by [Sampford
+(1967)](https://academic.oup.com/biomet/article-abstract/54/3-4/499/230469?redirectedFrom=fulltext).
+
+We can use the indices in the results to filter the sampling frame for
+the 12 selected schools.
+
+```{r pps_sample, eval=TRUE}
+
+# Import the sampling frame of urban schools with grade 1 classes in Attiki:
+school_frame <- rio::import(here(file = "data", "Sampling_frames.xlsx"), 
+                            which = "table1_5")
+
+# Perform PPS sampling to select 12 schools:
+schools2survey <- school_frame %>% 
+  
+  # Select schools by PPS without replacement:
+  filter(ID %in% pps::sampford(size = Students, n = 12))
+
+```
+
+\newpage
+
+## Session 2 - sample size calculations
+
+### Task 2.1 - sample size for single proportion
+
+**Background:**
+
+For each region, a sampling frame has been returned indicating the total
+number of students in the target class / age group. The sampling frame
+sizes by region are shown in table 2.1 below.
+
+The researchers now need to calculate sample sizes for each region,
+given the parameters described below:
+
+-   Vaccination coverage in previous surveys exceeded 85% for most
+    vaccines;
+
+-   Sample sizes will be calculated with a target precision of +/- 4% ;
+
+-   The response rate from previous surveys was approximately 87.5%.
+
+| Region                     | Number of pupils (sampling frame) |
+|----------------------------|----------------------------------:|
+| Thraki                     |                              4201 |
+| Macedonia-Thessalia        |                             31045 |
+| Ipeiros-Ionian Islands     |                              5055 |
+| Peloponnisos-Sterea Ellada |                             17741 |
+| Attiki                     |                             30586 |
+| Kriti-Aegean Islands       |                             12218 |
+| **Greece (total)**         |                            100846 |
+
+: Table 2.1 - Total number of pupils recorded in the sampling frame, by
+region.
+
+**Task description:**
+
+1.  Calculate the single proportion sample size required for each
+    region, assuming simple random sampling;
+
+2.  Use the per region student population, previous vaccination coverage
+    estimate and the desired precision presented above in the
+    calculations;
+
+3.  Adjust the calculations to take into account the lower response rate
+    (87.5%) achieved in previous surveys.
+
+**R coding tips:**
+
+The sampling frame sizes by region in table 2.1 can be imported into R
+from the `table2_1` worksheet in the `Sampling_frames.xlsx` workbook.
+
+To calculate sample size, we can use the `sampler` package. In the first
+instance, the `rsampcalc()` function can be used for each region. The
+arguments correspond to the inputs above as follows:
+
+-   *N* = population (i.e. number of students in each region from table
+    2.1)
+
+-   *e* = tolerable margin of error (i.e. desired precision of +/- 4%)
+
+-   *ci* = confidence interval (i.e. 95% - the default value)
+
+-   *p* = anticipated response distribution (convert 85% vaccination
+    coverage to proportion i.e. 0.85)
+
+-   *over* = desired over-sampling proportion (convert 87.5% response to
+    inverse proportion i.e. 1 - 0.875)
+
+Note that the last argument, `over` can be used to increase the sample
+size in order to compensate for a low response rate, by taking the
+inverse proportion of the response rate from previous surveys (1 -
+0.875) and adding this to the calculated sample size as a buffer.
+
+To first have a look at the sample sizes without this buffer, leave this
+argument on its default setting (0).
+
+```{r sample_size_basic, eval=TRUE}
+
+# Import the sampling frame of urban schools with grade 1 classes in Attiki:
+region_frame <- rio::import(here(file = "data", "Sampling_frames.xlsx"), 
+                            which = "table2_1")
+
+# Calculate sample size (number of students to survey) for each region:
+region_frame <- region_frame %>% 
+  
+  # Calculate baseline sample size for each region:
+  mutate(Sample_basic = sampler::rsampcalc(N = Student_pop, 
+                                          e = 4, 
+                                          ci = 95, 
+                                          p = 0.85, 
+                                          over = 0)) %>% 
+  
+  # Calculate sample size with adjustment for response rate of 87.5%:
+  mutate(Sample_rradjust = sampler::rsampcalc(N = Student_pop, 
+                                          e = 4, 
+                                          ci = 95, 
+                                          p = 0.85, 
+                                          over = 1 - 0.875))
+
+```
+
+\newpage
+
+### Task 2.2 - sample size calculation with design effect
+
+**Background:**
+
+The researchers have identified that there is likely to be variance
+between school classes and between students within classes, and want to
+take this into account in the sample size calculations using the design
+effect. To calculate the design effect, they have provided the following
+information:
+
+-   *rho* (intra-cluster correlation coefficient) - 0.05
+
+-   mean class size - 20 students
+
+**Task description:**
+
+1.  Use *rho* and mean class size provided above to calculate the design
+    effect;
+
+2.  Adjust the sample sizes calculated in task 2.1 to account for the
+    design effect;
+
+3.  Calculate the total number of clusters required using the adjusted
+    sample size.
+
+**R coding tips:**
+
+The design effect can be calculated in R using mathematical operators
+with a simple formula:
+
+$$
+deff = 1 + (n - 1) * rho
+$$
+
+where:
+
+$deff$ is the design effect;
+
+$n$ is the average number of subjects per cluster (e.g. mean number of
+students per class);
+
+$rho$ is the intra-cluster correlation coefficient (e.g. rate of
+homogeneity for vaccination status).
+
+The calculated design effect can then be multiplied by the original
+sample size per region to adjust it. The adjusted sample sizes can be
+added to a new column in the `region_frame` table that you created in
+the previous task.
+
+The number of clusters required can then be estimated by dividing the
+total sample size (sum of number of students to survey in the 6 regions)
+by the average cluster (class) size (20).
+
+```{r sample_size_icc, eval=TRUE}
+
+# Calculate the design effect given n = 20 and rho = 0.05:
+deff <- 1 + (20 - 1) * 0.05
+
+# Add new rho-adjusted sample size calculation to the table:
+region_frame <- region_frame %>% 
+  
+  # Calculate sample size with adjustment for the design effect:
+  mutate(Sample_rhoadjust = round(Sample_rradjust * deff, digits = 0))
+
+# Calculate the number of clusters (school classes) required:
+nclusters <- round((sum(region_frame$Sample_rhoadjust)) / 20, digits = 0)
+
+```
+
+\newpage
+
+## Session 4 - descriptive analysis
+
+### Task 4.1 - Sample representation
+
+**Background:**
+
+In this section, you will assess how well represented the target
+population is among surveyed students, using key demographic variables
+such as age, sex and classification of residence area type. The data
+have been provided in the file `vaccine4.dta`.
+
+**Task description:**
+
+1.  Identify the required variables in the data set (see data
+    dictionary, annex 5 and 6 in the main case study guide)
+
+2.  Summarize key demographic variables in surveyed children and in
+    children from the whole sampling frame.
+
+3.  Perform a statistical test to determine if any of these key
+    demographic variables are differently distributed in surveyed
+    children compared to all children in the sampling frame.
+
+**R coding tips:**
+
+Comparing the demographics of surveyed to non-surveyed students would
+require access to basic information for the whole sampling frame. The
+`vaccine4.dta` data only contains data for sampled students, but we can
+check for any differences between those that did and didn't have a
+vaccine book, to demonstrate the principles involved (subjects who did
+not have a vaccine book were excluded from subsequent analyses). It will
+be useful to check if those that did submit vaccine books were
+representative of the wider population in the sampling frame or not.
+This is encoded in the `vaccrec` variable.
+
+Before starting, you may wish to explore the data. Using the
+`dplyr::describe()` command as well as the information in the data
+dictionary will give you an overview of the data set.
+
+The following demographic variables may be useful comparators:
+
+-   *vaccrec* - logical variable that identifies whether a vaccine book
+    was received or not
+
+-   *gender* - gender of the participants (0 = female, 1 = male)
+
+-   *age* - age of the participants in years (with decimals)
+
+-   *urban* - whether the participants are resident in an urban (1) or
+    rural (0) area.
+
+The `gtsummary::tbl_summary()` function can be used to directly create a
+comparative summary of gender, age and urban residence, stratified by
+receipt of a vaccine book (relabelled as `Exluded` for those that did
+not have a vaccine book and `Included` for those that did have a vaccine
+book).
+
+Statistical differences can be tested for between the two groups with a
+`t.test()` for continuous variables (such as age) and `prop.test()` or
+`chisq.test()` for categorical variables (such as gender).
+
+You can use the results of these tests to determine if the participants
+that submitted a vaccine book are sufficiently representative, or if
+there is a bias in this group that needs to be taken into account.
+
+The four steps (import the data, subset and label, create descriptive
+summary and add test statistics with `gtsummary` ) can be completed in a
+single workflow using the dplyr pipe `%>%` .
+
+Note that in some cases it is necessary to explicitly state that a
+function is from a particular package using the
+`packagename::function()` syntax, as there are other packages that have
+functions with the same name but different arguments, that we also have
+loaded in this R session (see for example `dplyr::select()`).
+
+```{r representation, eval=TRUE}
+
+# Import the vaccine coverage study data for session 4:
+vaccine <- rio::import(here(file = "data", "vaccine4.dta"))  %>% 
+  
+  # Convert binary (0,1) columns of interest to logical:
+  mutate(across(c(vaccrec, urban), as.logical)) %>% 
+  
+  # Convert vaccrec to a factor and add nice display labels:
+  mutate(vaccrec = factor(vaccrec, labels = c("Excluded", "Included"))) %>% 
+  
+  # Create a new column for (male) gender for easier interpretation:
+  mutate(male = as.logical(gender)) %>% 
+  
+  # Update the label for age:
+  expss::apply_labels(age = "age (years)")
+
+
+# Summarise the demographics of the two groups (+/- vaccine book) in a table:
+reptable <- vaccine %>% 
+  
+  # Select subset of demographic variables for comparison:
+  dplyr::select(vaccrec, age, male, urban) %>% 
+  
+  # Create summary table with gtsummary:
+  gtsummary::tbl_summary(
+    
+    # Stratify by group (no vaccine book = excluded, has book = included):
+    by = vaccrec, 
+    
+    # Add summary stats (mean + SD for continuous, proportions for categorical):
+    statistic = list(all_continuous() ~ "{mean} ({sd})",
+                     all_categorical() ~ "{p}%"),
+    
+    # Exclude NA (missing values) from the table:
+    missing = "no") %>% 
+  
+  # Add tests of statistical significance of differences between groups:
+  add_difference(test = list(all_continuous() ~ "t.test", 
+                             all_categorical() ~ "prop.test"), 
+                 
+                 # Identify the grouping variable to use for the tests:
+                 group = vaccrec,
+                 
+                 # Define any test arguments that deviate from the default:
+                 test.args = all_tests("t.test") ~ list(var.equal = TRUE)) %>%
+  
+  # Add a column with the number of cases for each variable / factor level:
+  add_n() %>%
+  
+  # Tidy up the header:
+  modify_header(all_stat_cols() ~ "**{level}**") %>%
+  
+  # Tidy up the footnote:
+  modify_footnote(all_stat_cols() ~ NA)
+
+
+```
+
+```{r proptable_function, eval=TRUE}
+
+# Function used to calculate weighted proportions, CI and design effect
+svy_prop <- function(x, design) {
+p1 <- round(svyciprop(as.formula(paste0( "~" , x)), design, na.rm = T) * 100, digits = 2)
+p2 <- round(confint(p1) * 100, digits = 2)
+p3 <- deff(round(svymean(as.formula(paste0( "~" , x)), design, na.rm = T, deff = T) * 100, digits = 2))
+p4 <- cbind("Proportion" = p1, p2, "Design effect" = p3)
+}
+
+```
+
+The svy_prop function is used to calculate proportions, CIs, and the
+design effect of weighted variables.
+
+**See appendix for an example of code showing how to make table 4.1**
+
+## Task 4.3 - Calculate sampling weights
+
+#### Generate a new variable for sampling weights for each stratum in your dataset.
+
+To create sampling weights for each stratum in your dataset, you may use
+the following:
+
+```{r}
+# Create a 2-columned matrix that contains the population values per stratum
+popvar <- matrix(c(11,12,21,22,31,32,41,51,52,61,62,3282,1773,8609,3609,24311,6734,30345,12928,4813,3069,1132),
+                     nrow = 11, ncol = 2, byrow = F)
+
+# Rename the column names for ease of merging
+colnames(popvar) <- c("strata", "population")
+
+# Merge the original data set with the matrix
+vaccine <- merge(vaccine, popvar[, c("strata", "population")], by = "strata", all.x = T)
+```
+
+We will now use the **dplyr package** to create a new variable called
+**sample** which is the total number of records (rows) per stratum. For
+more information on dplyr see
+[here](https://cran.rstudio.com/web/packages/dplyr/vignettes/introduction.html).
+
+We will use the **mutate** function of dplyr to add a new variable to
+the vaccine dataset.
+
+```{r}
+# Using dplyr, we create the sample variable, for which each row is equal to the total number of rows in a specific stratum
+# The %>% can be read below as "then"
+
+# First, we take the data frame vaccine, then
+vaccine <- vaccine %>%
+ # We group vaccine data by strata, then 
+  group_by(strata) %>%
+ # We create a new variable, sample, using n(), to count the number of rows per stratum 
+  mutate(sample = n())
+```
+
+```{r, eval = F}
+# You can view this new variable along with other key variables
+View(vaccine[,c("id","school", "strata","population", "sample")])
+```
+
+We now create the sampling fraction variable (samplef) which is the
+sample/population and then, finally the weight variable.
+
+```{r}
+vaccine$samplef <- vaccine$sample/vaccine$population
+
+# The weight variable is the inverse of the sampling fraction
+vaccine$weight1 <- 1/vaccine$samplef
+```
+
+```{r, eval = F}
+#  You can view these new variables
+View(vaccine[,c("id","school", "strata","population","sample", "samplef", "weight1")])
+
+```
+
+## Task 4.4 - Calculate weighted proportions
+
+You can think of a weighted proportion as:
+
+-   a weighted average of each observation of 0 and 1, where the weights
+    for each stratum are equal to Ni/ni (i.e. inversely proportional to
+    the sampling fraction of the ith stratum); where: Ni=total
+    population of stratum i; and ni=sample size of stratum i; or
+
+-   as a weighted average of the stratum specific proportions, where the
+    weights are equal to Ni (i.e. proportional to the stratum population
+    sizes).
+
+The researchers aimed to obtain separate estimates for the urban and
+rural sectors of the population in each region (strata) as well as of
+the whole country.
+
+#### Calculate the vaccination coverage of MMR-2 (variable name mmr2yn) for each stratum
+
+We will first make a new data set that only keeps records of children
+that had vaccination booklets.
+
+```{r}
+vacc_rec <- vaccine[vaccine$vaccrec == 1, ]
+```
+
+There are multiple ways that you could create table 4.3 including the
+vaccination coverage of MMR-2. Below is one way which involves a number
+of steps.
+
+**Step 1:** Obtain the total number of records, total sample, sampling
+fraction, weight per stratum using the **distinct** function of the the
+**dplyr package**:
+
+```{r}
+# creates a table with unique values of population, sample, samplef and weight1 by strata
+
+# We make table1 using 5 variables from the vacc_rec data set, then
+table1 <- vacc_rec[, c("strata", "population", "sample", "samplef", "weight1")] %>%
+  
+# We group this data subset by strata, then 
+  group_by(strata) %>%
+  
+# We extract distinct/unique rows for each of the following variables
+  distinct(population, sample, samplef, weight1)
+
+table1
+```
+
+**Step 2:** Calculate the proportion of records that received MMR-2.
+
+```{r}
+# Using dplyr, we calculate the number of rows by strata and by level of mmr2yn (0 and 1), and create the freq variable to calculate the % per strata and level of mmr2yn
+
+# We take the variables strata and mmr2yn from vacc_rec, then
+table2 <- vacc_rec[, c("strata", "mmr2yn")] %>%
+  
+# We group them by strata and level of mmr2yn (0 and 1), then  
+  group_by(strata, mmr2yn) %>%
+  
+# we create a variable that counts the number of rows by strata and level of mmr2yn, then
+  summarise(counts = n()) %>%
+# We create a new variable freq which is the proportion of each level of mmr2yn per stratum
+  mutate(freq = round(counts/sum(counts) * 100, digits = 2))
+
+table2
+```
+
+**Step 3:** Merge tables 1 and 2 but only where mmr2yn = 1, using
+**strata** as the merging variable.
+
+```{r}
+table3 <- merge(table1, table2[table2$mmr2yn == 1, c("strata", "freq")], by = "strata")
+
+table3
+```
+
+**Step 4:** Tidy up the table by rounding figures and adding in total
+values.
+
+```{r}
+# Rounds value of samplef
+table3$samplef <- round(table3$samplef * 100, digits = 2)
+
+## Adding additional row at end of table
+table3 <- table3[1:12,]
+
+# Label first cell in 12th row as Total
+table3[12,1] <- "Total"
+
+# Calculate sum of population and put value in 12th row, 2nd column
+table3[12,2] <- colSums(table3[1:11, c("population"),drop = F])
+
+# Obtain the unweighted proportion of MMR-2 vaccination coverage
+unweighted <- prop.table(table(vacc_rec$mmr2yn))
+unweighted  <- round(unweighted  * 100, digits = 2)
+unweighted  <- as.data.frame(unweighted) 
+
+# Incorporate the unweighted proportion of value into table 3
+table3[12,6] <- unweighted[2,2]
+```
+
+```{r, echo = FALSE}
+kable(table3)
+```
+
+Suppose there are only three strata (stratum 11, 12, 21) in the country.
+Based on the information provided in Table 4.2, calculate the weighted
+proportion of children vaccinated with MMR-2 in the country (three
+strata only).
+
+```{r}
+# Using formula 4.2 and information on Table 4.2, you should have:
+((3282*0.6797) + (1773*0.6388) + (8609*0.7714))/(3282 + 1773 + 8609)
+
+# For the 11 strata in the study, you could type:
+((3282*0.6797) + (1773*0.6388) + (8609*0.7714) + (3609*0.7209) + (24311*0.7824) + (6734*0.8396) + (30345*0.7667) + (12928*0.7214) + (4813*0.6621) + (3069*0.8257) + (1132*0.75)) / (100605)
+```
+
+The above suggests that allowing for the sampling weights, 76% of
+children received MMR-2. This differs from the simple (not weighted)
+proportion, which is 75%.
+
+## Task 4.5 - Estimate vaccination coverage
+
+You will now estimate the vaccination coverage of children for different
+vaccines and in different settings, using the **survey** package in R.
+
+#### Calculate the proportion of children that were fully vaccinated (vacful) and the corresponding 95%CI
+
+-   as if simple random sampling were used\
+-   allowing for the weights\
+-   allowing for the weights and clustering\
+-   allowing for the weights, clustering and stratification
+
+Complete Table 4.4.1 Comment on the results.
+
+## Help, Task 4.5
+
+You can use the survey package in R, which allows you to analyse survey
+data taking into account the sampling design (stratification, multistage
+sampling, cluster sampling) e.g. calculate proportions, allowing for the
+weights, stratification and clustering. These commands can be used for
+means, proportions, ratios and sums, but also for the estimation of
+regression coefficients (univariate and multivariate regressions).
+
+You need to use the function **svydesign** to define the design to be
+applied to the survey.
+
+More information can be found in R help, but the essentials are
+summarised below:
+
+*svydesign(ids, strata = NULL, weights = NULL, data = NULL)*
+
+-   **ids**: designates the name of the variable that contains
+    identifiers for the primary sampling units (e.g. clusters = school
+    in this study). Ids take a value of **\~0 or \~1** if there are no
+    clusters
+-   **strata**: designates the name of the variable that contains
+    identifiers for the strata (e.g. strata = urban/rural areas of each
+    region in this study), to allow for stratification
+-   **weights**: designates the variable of the sampling weight used,
+    i.e. allows for the sampling weight of each individual
+-   **data**: specifies the relevant data frame
+
+You may use the function **svymean** or **svyciprop** to estimate
+proportions for **dichotomous variables**. Of note, **syvciprop**
+provides **more accurate confidence intervals** compared to svymean.
+However, it doesn't provide the design effect. We will use a combination
+of svyciprop and svymean to obtain all the elements we need. **svyby**
+can be used to estimate proportions in different subpopulations (see
+below for explanations of options for each function).
+
+*svymean(x, design, na.rm = FALSE, deff = FALSE)*
+
+The options for svymean include:
+
+-   **x**: a variable, a formula or matrix
+-   **design**: the object created using svydesign
+-   **na.rm**: should cases with missing values be dropped?
+-   **deff**: return the design effect
+
+*svyciprop(formula, design, level = 0.95, method = c("logit",
+"likelihood", "asin", "beta", "mean", "xlogit"))*
+
+The options for svyciprop include:
+
+-   **formula**: model formulat specifying a single binary variable
+-   **design**: the object created using svydesign
+-   **level**: confidence interval level
+-   **method**: method to be used
+
+*svyby(formula, by, design, FUN, deff = FALSE, vartype =
+c("se","ci","cv","cvpct","var")*
+
+The options for svyby include:
+
+-   **formula,x**: a variable, a formula or matrix to pass to the
+    function
+-   **by**: a formula specifying factors that define subsets, or a list
+    of factors
+-   **design**: the object created using svydesign
+-   **FUN**: a function taking a formula and survey design object as its
+    first two arguments
+-   **deff**: request a design effect from FUN
+-   **vartype**: report variability in terms of standard error,
+    confidence intervals and more
+
+#### Calculate the simple proportion (unweighted) and 95% CIs
+
+```{r}
+# Make vacful a factor and reorder in order to obtain proportion/ CI
+vacc_rec$vacful <- factor(vacc_rec$vacful, levels = c(1, 0))
+
+# Use prop.test to obtain the proportion and the CI
+simple <- prop.test(table(vacc_rec$vacful))
+
+# Extract the proportion, confidence intervals from the simple table and add 1 as the design effect for a simple proportion
+simple <- rbind(round(simple$estimate * 100, digits = 2),
+                round(simple$conf.int[1] * 100, digits = 2), 
+                round(simple$conf.int[2] * 100, digits = 2),
+                1)
+
+# Make simple a data frame and use the transpose function to switch rows to columns
+simple <- as.data.frame(t(simple))
+
+# Add column names to the simple data frame
+colnames(simple)[1:4] <- c("Proportion", "2.5%", "97.5%","Design effect")
+simple
+```
+
+```{r}
+# We must convert vacful back to a numeric variable for the subsequent calculations, as follows:
+# Factor variables must be first converted to characters and then to numeric
+vacc_rec$vacful <- as.numeric(as.character(vacc_rec$vacful))
+```
+
+#### Calculate a weighted proportion and 95% CIs (taking into account the sampling weights)
+
+We first need to define the survey design. By specifying that ids = \~1,
+we ignore clusters in the data.
+
+```{r}
+design <- svydesign(ids = ~1, weights = ~weight1, data = vacc_rec)
+```
+
+We can obtain the proportion, confidence intervals and design in a
+multi-step process as below.
+
+```{r, eval=FALSE}
+# NB.any records that contain NAs must be dropped to calculate the proportion using svymean
+# We use svyciprop to calculate proportions and specifically for 95% CI of proportions
+a <- round(svyciprop(~vacful, design, na.rm = T) * 100, digits = 2)
+# Save the 95% CI separately
+b <- round(confint(a) * 100, digits = 2)
+# Use svymean to calculate the design effect
+c <- deff(round(svymean(~vacful, design, na.rm = T, deff = T) * 100, digits = 2))
+# Put them all together with correct labelling
+d <- cbind("Proportion" = a, b, "Design effect" = c)
+d
+```
+
+Alternatively, we can use the **svy_prop** function (defined at the
+start of the case study), which carries out the above 4 steps but keeps
+the code neater.
+
+```{r}
+e <- svy_prop("vacful", design = design)
+e
+```
+
+#### To estimate the proportion of children that were fully vaccinated, allowing for the weights and clustering:
+
+To include clustering in the design, we define the primary sampling
+unit/ids as school.
+
+```{r}
+design2 <- svydesign(ids = ~school, weights = ~weight1, data = vacc_rec)
+
+# Use the svy_prop function specifying that design2 should be used
+f <- svy_prop("vacful", design = design2)
+f
+```
+
+#### To estimate the proportion of children that were fully vaccinated, allowing for the weights, clustering and stratification:
+
+To include stratification in the design, we define that strata equals
+strata.
+
+```{r}
+design3 <- svydesign(ids = ~school, weights = ~weight1, strata = ~strata, data = vacc_rec)
+g <- svy_prop("vacful", design = design3)
+g
+```
+
+To create table 4.4.1, we need to combine all of these elements
+together.
+
+```{r}
+# Combine simple with e, f, and g
+table4 <- rbind(simple,e,f,g)
+
+# Round the values
+table4[, 2:4] <- round(table4[, 2:4], digits = 3)
+
+# Add in row names
+rownames(table4) <- c("Simple proportion",
+                      "+ sampling weight",
+                      "+ sampling weight + clustering",
+                      "+ sampling weight + clustering + stratification")
+```
+
+```{r, echo = FALSE}
+kable(table4)
+```
+
+Of note, the CIs and the design effects obtained from R and Stata are
+not exactly the same, however, their interpretation remains similar.
+
+Estimations are modified when the sampling design is taken into account:
+
+-   allowing for the sample weight modifies the estimate of vaccination
+    coverage
+-   allowing for the clustering (or multistage design) decreases the
+    precision of the estimate (higher variance and design effect)
+-   allowing for the stratification improves the precision of the
+    estimate (lower variance and design effect) Note that the point
+    estimate depends on the weights only, while the 95% CIs depend on
+    everything (weights, stratification and clustering).
+
+#### Design effects and intraclass correlation coefficient
+
+A design effect of **1.407** suggests that the variability (variance or
+the square of the standard error) of the estimate under the chosen
+design is **40.7%** larger than that of the same-sized simple random
+sampling. Similarly, a design effect of 2.358 suggests that the
+variability of the estimate allowing for clustering, stratification and
+sampling weights is 135.8% larger than that would come from the same
+sample size if simple random sampling were used.
+
+Rearranging the formula: deff=1+(n-1) ? rho ==\> rho=(deff-1)/(n-1)
+where deff=2.358 and n=20, you can get intraclass correlation
+coefficient (rho)=0.071
+
+You may use this value of rho in sample size calculations in other
+similar surveys in the future. As mentioned earlier, the rho is the
+proportion of the total variation in the outcome that is between
+clusters; this measures the degree of similarity or correlation between
+subjects within the same cluster. The larger the rho-that is the
+tendency for subjects within a cluster to be similar-the greater the
+size of the design effect and the larger the additional number of
+subjects required to achieve the same precision.
+
+Note that in the sample size calculations in session 2, deff and rho
+were expected to be higher (2 and 0,05, respectively). Hence, the sample
+size actually achieved was larger and the estimates were more precise
+than originally expected.
+
+#### Calculate the vaccination coverage and complete Table 4.4.2
+
+For example, DTP-3:
+
+```{r}
+# Weighted vaccine coverage of DTP-3
+dtp <- svy_prop("dtp3yn", design = design3)
+dtp
+
+# Weighted vaccine coverage of DTP-3 by minority group
+dtm <- svyby(~dtp3yn, ~minority,
+             design3,
+             svyciprop, vartype = "ci")
+dtm <- round(dtm[,2:4] * 100, digits = 2)
+dtm
+
+# Weighted vaccine coverage of DTP-3 by area
+dtu <- svyby(~dtp3yn, ~urban, 
+             design3,
+             svyciprop, vartype = "ci")
+dtu <- round(dtu[,2:4] * 100, digits = 2)
+dtu
+```
+
+Creating table 4.4.2 will take a few steps, as outlined below.
+
+**Step 1:** Use a loop to estimate overall vaccination coverage for all
+vaccines.
+
+```{r}
+vars <- c("dtp3yn", "dtp4yn", "dtp5yn", "mmr1yn", "mmr2yn", "hibprmyn", "hibfulyn", "hbv3yn", "mnc1yn", "pne1yn", "var1yn", "vacful", "vactime")
+
+# Create an empty list to store the output of the loop
+output <- list()
+
+# for each variable in vars
+for (var in vars) {
+# Calculate the proportion, 95% CI and deff
+  overall <- svy_prop(var, design = design3)
+  output[[var]] <- overall
+}
+
+# Bind dataframes from the list (output) as rows below each other in a matrix
+output2 <- do.call(rbind, output[1:length(output)]) 
+
+# Transform output2 to a dataframe
+output2 <- as.data.frame(output2)
+
+```
+
+**Step 2:** Use a loop to estimate vaccination coverage for DTP-3,
+complete vaccination and timely vaccination **by minority.**
+
+```{r, warning = FALSE, message = FALSE}
+vars <- c("dtp3yn", "vacful", "vactime")
+
+# Create an empty list to store the output of the loop
+output3 <- list()
+  
+for (var in vars) {
+# Calculate proportions, 95% CI and deff for vars by minority
+  a <- svyby(as.formula(paste0( "~" , var)),
+             by = ~minority, design3, 
+             svyciprop, vartype = "ci")
+#  Change the column names to facilitate merging
+  colnames(a)[2:4] <- c("Proportion", "2.5%","97.5%")
+  a <- round(a[,2:4]*100, digits = 1)
+  output3[[var]] <- a
+}  
+
+# Bind dataframes from the list (output3) as rows below each other in a matrix
+output3 <- do.call(rbind, output3[1:length(output3)])
+
+# Need to add an empty Design effect variable to be able to combine all of the dataframes later
+output3$`Design effect` <- ""
+```
+
+**Step 3:** Use a loop to estimate vaccination coverage for DTP-3,
+complete vaccination and timely vaccination **by area.**
+
+```{r}
+vars <- c("dtp3yn", "vacful", "vactime")
+
+# Create an empty list to store the output of the loop
+output4 <- list()
+
+for (var in vars) {
+# Calculate proportions, 95% CI and deff for vars by area
+  b <- svyby(as.formula(paste0( "~" , var)),
+             by = ~urban, design3, 
+             svyciprop, vartype = "ci")
+#  Change the column names to facilitate merging  
+  colnames(b)[2:4] <- c("Proportion", "2.5%","97.5%")
+  b <- round(b[,2:4]*100, digits = 1)
+  output4[[var]] <- b 
+}  
+
+output4 <- do.call(rbind, output4[1:length(output4)])
+
+# Create an empty Design effect variable to be able to combine all of the dataframes later
+output4$`Design effect` <- ""
+```
+
+**Step 4:** Combine the tables, while trying to follow the table
+structure in the manual as much as possible.
+
+```{r}
+finaltable <- rbind(output2[1,],
+                    output3[1:4,],
+                    output4[1:2,],
+                    output2[2:12,],
+                    output3[5:8,],
+                    output4[3:4,],
+                    output2[13,],
+                    output3[9:12,],
+                    output4[5:6,])
+```
+
+**Step 5:** Tidy up the table with rownames and rounding of variables
+(found in the appendix).
+
+```{r,echo = FALSE}
+# Add appropriate rownames
+rownames(finaltable) <- c("DTP-3 (overall)", "DTP-3 General population", "DTP-3 Roma", "DTP-3 Greek Muslims", "DTP-3 Immigrants", "DTP-3 Rural areas", "DTP-3 Urban areas", "DTP-4 (overall)","DTP-5 (overall)", "MMR-1 (overall)", "MMR-2 (overall)", "HiB- primary (overall)", "HiB- full (overall)", "HepB-3 (overall)", "MNC-1 (overall)", "PCV7-1 (overall)", "Var-1 (overall)", "Complete vaccination (overall)",  "Comp Vacc General population","Comp Vacc Roma", "Comp Vacc Greek Muslims", "Comp Vacc Immigrants", "Comp Vacc Rural areas", "Comp Vacc Urban areas", "Timely vaccination (overall)", "Timely vacc General population", "Timely vacc Roma", "Timely vacc Greek Muslims", "Timely vacc Immigrants", "Timely vacc Rural areas", "Timely vacc Urban areas")
+
+# Design effect needs to be numeric to round the values
+finaltable$`Design effect` <- as.numeric(finaltable$`Design effect`)
+
+# round values
+finaltable[,2:4] <- round(finaltable[,2:4], digits = 2)
+
+# convert NA values to "" 
+finaltable[is.na(finaltable) == T ] <- "" 
+```
+
+```{r, echo = FALSE}
+knitr::kable(finaltable)
+```
+
+# Appendix
+
+### Making table 4.1
+
+You could use the following code to make a table similar to table 4.1:
+
+```{r, eval = F}
+# List your variales of interest
+vars <- c("gender", "urban", "minority", "country1")
+
+# Make an empty list to store output
+output <- list()
+
+# Use the loop to obtain count & proportions of variables in the full sample and by vaccrec, and result of chisq test
+for (var in vars) {
+  full <- big.table(vaccine[,var])
+  combo <- table(vaccine[,var], vaccine$vaccrec)
+  prop <- round(prop.table(combo,2)*100,digits = 2)
+  test <- chisq.test(combo)
+  output[[var]] <- cbind(total,
+                         "Respondents (n)" = combo[,c(2)],
+                         "% respondents" = prop[,c(2)],
+                         "Non-respondents (n)" = combo[,c(1)], 
+                         "% non-respondents" = prop[,c(1)],
+                         Pvalue = round(test$p.value, digits = 3))
+}
+
+output
+
+## Use the Do.call function which will loop over output with rbind to create a neater table
+output2 <- do.call(rbind, output[1:length(output)]) 
+
+# Add in appropriate variable names
+rownames(output2) <- c("Female", "Male", "Rural areas", "Urban areas", "General population", "Roma", "Greek Muslims", "Immigrants", "Other country", "Greece")
+
+# Note that the final order isn't exactly the same as table 4.1
+output2
+```
+
+### Tidying up table 4.4.2
+
+```{r, eval = F}
+# Add appropriate rownames
+rownames(finaltable) <- c("DTP-3 (overall)", "DTP-3 General population", "DTP-3 Roma", "DTP-3 Greek Muslims", "DTP-3 Immigrants", "DTP-3 Rural areas", "DTP-3 Urban areas", "DTP-4 (overall)","DTP-5 (overall)", "MMR-1 (overall)", "MMR-2 (overall)", "HiB- primary (overall)", "HiB- full (overall)", "HepB-3 (overall)", "MNC-1 (overall)", "PCV7-1 (overall)", "Var-1 (overall)", "Complete vaccination (overall)",  "Comp Vacc General population","Comp Vacc Roma", "Comp Vacc Greek Muslims", "Comp Vacc Immigrants", "Comp Vacc Rural areas", "Comp Vacc Urban areas", "Timely vaccination (overall)", "Timely vacc General population", "Timely vacc Roma", "Timely vacc Greek Muslims", "Timely vacc Immigrants", "Timely vacc Rural areas", "Timely vacc Urban areas")
+
+# Design effect needs to be numeric to round the values
+finaltable$`Design effect` <- as.numeric(finaltable$`Design effect`)
+
+# round values
+finaltable[,2:4] <- round(finaltable[,2:4], digits = 2)
+
+# convert NA values to "" 
+finaltable[is.na(finaltable) == T ] <- "" 
+```
+
+### Tidying up table output using ReporterRs package
+
+```{r}
+# Functions used to format tables
+label_table <- function(X){
+  setFlexTableBorders(X,inner.vertical = borderProperties(style = "none"),inner.horizontal = borderProperties(style = "none"),outer.vertical = borderProperties(style = "none"),outer.horizontal = borderProperties(width = 2),body = T,header = T)
+} 
+
+label_footer <- function(X){
+  setFlexTableBorders(X,inner.vertical = borderProperties(style = "none"),inner.horizontal = borderProperties(style = "none"),outer.vertical = borderProperties(style = "none"),outer.horizontal = borderProperties(style = "none"),footer = T)
+}
+```
+
+```{r, eval = F}
+# To make publication standard tables through R, you can use the FlexTable function from the ReporteRs package
+table3 <- FlexTable(table3,header.columns = F)
+
+# this adds a new row with those headings and you specify over how many columns each heading should span
+table3 <- addHeaderRow(table3, text.properties = textBold(), value = c("Stratum", "Total number of 1st year pupils", "Number of pupils selected in sample", "Sampling fraction (%)", "Sampling weight", "MMR-2 vaccination coverage (%)"), colspan = c(1,1,1,1,1,1)) 
+
+ #  removed the label around the footer
+table3 <- label_footer(table3)
+
+ # formatted the table so that only the top and lower parts are neatly formatted
+table3 <- label_table(table3) 
+
+ # Can export the table to e.g. powerpoint
+doc1 <- pptx()
+
+doc1 <- addSlide( doc1, "Two Content")
+doc1 <- addTitle( doc1 , 'Table3', level = 1)
+doc1 <- addFlexTable(doc1, flextable = table3)
+writeDoc( doc1, 'N:/MED/IMED-VIE/INFE/Public/CC-INFE-Schmid/EPIET/Output/Table3.pptx')
+
+```
