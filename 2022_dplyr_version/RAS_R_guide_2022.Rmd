@@ -24,6 +24,7 @@ editor_options:
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE, 
                       results = 'hide', 
+                      eval    = TRUE,
                       message = FALSE, 
                       warning = FALSE)
 ```
@@ -99,16 +100,19 @@ the code below. This code has also been made available as a separate R
 script. It uses the `pload()` function from the `pacman` package as this
 will check the user's library for required packages, install them if
 they are missing, and then load them into the current R session. This
-code should therefore be rerun at the beggining of each session, to
+code should therefore be rerun at the beginning of each session, to
 ensure that all the required libraries are loaded.
 
-```{r packages, eval=TRUE, results='hide', message=FALSE, warning=FALSE}
+```{r packages, results='hide', message=FALSE, warning=FALSE}
 
 # Packages to install *before* running pacman pload():
 #####################################################
 
 # Ensures the package "pacman" is installed
 if (!require("pacman")) install.packages("pacman")
+
+# Ensures the package "remotes" is installed
+if (!require("remotes")) install.packages("remotes")
 
 # Additional package for mixed effects modelling:
 remotes::install_github("goodekat/redres")
@@ -121,7 +125,7 @@ pacman::p_load(
   #############################
   here,      # file paths relative to R project root folder
   rio,       # import/export of many types of data
-  openxlsx,  # import/export of multi-sheet Excel workbooks
+  openxlsx,  # import/export of multi-sheet Excel workbooks ## ALEX: this is not required see rio::import_list
   rmarkdown, # reading and printing RAS R markdown guide
   knitr,     # reading and printing RAS R markdown guide
   
@@ -146,7 +150,7 @@ pacman::p_load(
   # Exploratory graphs:
   #########################
   metR,         # Filled contours used with ggplot2
-  gridExtra,	 # Plotting ggplot2 graphs side by side
+  gridExtra,	  # Plotting ggplot2 graphs side by side ## ALEX: this should be done with {patchwork}
  
   
   # Summary tables:
@@ -163,7 +167,7 @@ pacman::p_load(
   
   # RAS analysis:
   #########################
-  # Package functions will be explained in the guide
+  # Package functions will be explained in the guide ## ALEX: add explanations here too. 
   pps,
   sampler,
   randomNames,
@@ -180,7 +184,7 @@ pacman::p_load(
   lme4,
   lmerTest,
   performance,
-  optimx,
+  optimx
 )
 
 
@@ -301,7 +305,7 @@ and urban/rural area
 First, import the summary data from table 1.2.
 
 This table is currently in wide format, but to calculate the number of
-classes to sample from in each strata, it needs to be converted to wide
+classes to sample from in each strata, it needs to be converted to long
 format (i.e. 'tidy data') so that a single column defines the strata
 (urban or rural) and another column contains the population for each
 stratum. We can do this with the `tidyr::pivot_longer()` function.
@@ -310,17 +314,17 @@ We can then calculate the relative proportions in each stratum and from
 there determine the number of school classes to sample (out of 50) for
 each stratum within each region:
 
-```{r sframe_import, eval=TRUE}
+```{r sframe_import}
 
 # Import sample frame for regions:
-regions <- rio::import(here(file = "data", "Sampling_frames.xlsx"),
+regions <- rio::import(here::here("data", "Sampling_frames.xlsx"),
                          which = "table1_2")
 
 # Create new table for results:
 rsf_long <- regions %>% 
   
   # Convert table to tidy data:
-  tidyr::pivot_longer(cols = 2:3,                    # Convert to tidy format
+  tidyr::pivot_longer(cols = c(Urban, Rural),   # Convert to tidy format
                       names_to = "Stratum",          # Store strata in new col
                       values_to = "Population") %>%  # Store population in new col
   
@@ -362,10 +366,10 @@ The simple random sample of 22 classes can then be identified using the
 `dplyr` convenience function `slice_sample()` to return a random subset
 of 22 rows of the original sampling frame.
 
-```{r simple_random_sample, eval=TRUE}
+```{r simple_random_sample}
 
 # Import the sampling frame of school classes in Peleponissos-Sterea:
-class_frame <- rio::import(here(file = "data", "Sampling_frames.xlsx"),
+class_frame <- rio::import(here::here("data", "Sampling_frames.xlsx"),
                          which = "table1_3")
 
 
@@ -383,7 +387,7 @@ class_list <- class_frame %>%
 The sampling fraction is the number of units sampled divided by the
 total number of units in the sampling frame, i.e.:
 
-```{r sample_fraction, eval=TRUE}
+```{r sample_fraction}
 
 # Calculate the sampling fraction for this example:
 sample_fraction <- round(22/nrow(class_frame), digits = 2)
@@ -426,23 +430,33 @@ per day.
 After calculating the size of the groups to divide the sampling frame
 into, we can select a random number from this group size using the base
 R function `sample.int()`.
+Note that you can ensure you always get the same number back by using the 
+`set.seed()` function - this way if you send your script to someone else they 
+would be able to reproduce the same sample. 
 
-This random number can then be fed into the `dplyr::filter()` command as
+This random number can then be fed into the `dplyr::slice()` command as
 shown below to select every *nth* row of the sampling frame. Note that
 if *n* is small / an early number in the sequence, an excess of rows may
 be selected. If this happens, the returned rows can be limited to the
 desired sample size by using the `dplyr::slice_head()` function:
 
-```{r systematic_sample, eval=TRUE}
+```{r systematic_sample}
 
-# Calculate the random starting point for systematic sampling:
-sample_start <- sample.int(n = nrow(class_frame)/22, size = 1)
+# define the sampling interval: the n to systematically sample 
+# (i.e. every nth row to choose)
+sample_n <- as.integer(nrow(class_frame)/22)
+
+# Calculate the random starting point for systematic sampling
+sample_start <- sample.int(n = sample_n, size = 1)
+
+# define the rows to systematically every nth row to use for filtering the sampling frame 
+sample_rows <- seq.int(sample_start, nrow(class_frame), sample_n)
 
 # Now subset the sampling frame and filter for every nth row:
 class_system <- class_frame %>% 
   
   # Select every nth row from the sampling frame
-  filter(row_number() %% sample_start == 1) %>% 
+  slice(sample_rows) %>% 
   
   # Limit the number of returned rows to the desired sample size (22)
   slice_head(n = 22)
@@ -493,20 +507,28 @@ function from the `pps` package to perform the sampling without
 replacement, which uses the classic method developed by [Sampford
 (1967)](https://academic.oup.com/biomet/article-abstract/54/3-4/499/230469?redirectedFrom=fulltext).
 
-We can use the indices in the results to filter the sampling frame for
-the 12 selected schools.
 
-```{r pps_sample, eval=TRUE}
+We can use the indices in the results to filter the sampling frame for
+the 12 selected schools (using `dplyr::slice()` as above).
+
+Note that an alternative would be to use `dplyr::slice_sample()` and supply 
+probabilities for each school to the `weight_by` argument. To do this you would 
+have to calculate probabilities for each school
+`school_frame %>% mutate(probability = Students / sum(Students))`. 
+We opted for using the `pps::sampford()` function, as the documentation on methods
+is more transparrent. 
+
+```{r pps_sample}
 
 # Import the sampling frame of urban schools with grade 1 classes in Attiki:
-school_frame <- rio::import(here(file = "data", "Sampling_frames.xlsx"), 
+school_frame <- rio::import(here::here("data", "Sampling_frames.xlsx"), 
                             which = "table1_5")
 
 # Perform PPS sampling to select 12 schools:
 schools2survey <- school_frame %>% 
   
   # Select schools by PPS without replacement:
-  filter(ID %in% pps::sampford(size = Students, n = 12))
+  slice(pps::sampford(size = Students, n = 12))
 
 ```
 
@@ -587,10 +609,10 @@ inverse proportion of the response rate from previous surveys (1 -
 To first have a look at the sample sizes without this buffer, leave this
 argument on its default setting (0).
 
-```{r sample_size_basic, eval=TRUE}
+```{r sample_size_basic}
 
 # Import the sampling frame of urban schools with grade 1 classes in Attiki:
-region_frame <- rio::import(here(file = "data", "Sampling_frames.xlsx"), 
+region_frame <- rio::import(here::here("data", "Sampling_frames.xlsx"), 
                             which = "table2_1")
 
 # Calculate sample size (number of students to survey) for each region:
@@ -624,9 +646,9 @@ take this into account in the sample size calculations using the design
 effect. To calculate the design effect, they have provided the following
 information:
 
--   *rho* (intra-cluster correlation coefficient) - 0.05
+-   *rho* (intra-cluster correlation coefficient): 0.05
 
--   mean class size - 20 students
+-   mean class size: 20 students
 
 **Task description:**
 
