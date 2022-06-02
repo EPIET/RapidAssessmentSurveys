@@ -2576,6 +2576,7 @@ mmr2cov &lt;- vaccine %&gt;%
   sitrep::tab_survey(mmr2yn,           # The variable to calculate proportions on
                      strata = strata,  # The variable containing the strata
                      keep = c(1),      # The value of interest (mmr2 vaccinated)
+                     method = &quot;xlogit&quot;,# Log transformation of the mean
                      wide = FALSE,     # Long format better for a lot of strata
                      deff = TRUE,      # Include the design effect in the output
                      pretty = FALSE) %&gt;% # Do not convert to percent (yet)
@@ -2770,6 +2771,7 @@ table451 &lt;- vaccine %&gt;%
   sitrep::tab_survey(vacful,           # The variable to calculate proportions on
                      strata = NULL,    # SRS has no strata
                      keep = c(1),      # The value of interest (fully vaccinated)
+                     method = &quot;xlogit&quot;,# Log transformation of mean
                      wide = FALSE,     # Long format better for a lot of strata
                      deff = TRUE,      # Include the design effect in the output
                      pretty = FALSE) %&gt;% # Do not merge VCE and 95% CI yet
@@ -2806,6 +2808,7 @@ table451b &lt;- vaccine %&gt;%
   sitrep::tab_survey(vacful,           # The variable to calculate proportions on
                      strata = NULL,    # Weighted sampling has no strata
                      keep = c(1),      # The value of interest (fully vaccinated)
+                     method = &quot;xlogit&quot;,# Log transformation of the mean
                      wide = FALSE,     # Long format better for a lot of strata
                      deff = TRUE,      # Include the design effect in the output
                      pretty = FALSE) %&gt;% # Do not merge VCE and 95% CI yet
@@ -2844,6 +2847,7 @@ table451b &lt;- vaccine %&gt;%
   sitrep::tab_survey(vacful,           # The variable to calculate proportions on
                      strata = NULL,    # Weighted sampling has no strata
                      keep = c(1),      # The value of interest (fully vaccinated)
+                     method = &quot;xlogit&quot;,# Log transformation of the mean
                      wide = FALSE,     # Long format better for a lot of strata
                      deff = TRUE,      # Include the design effect in the output
                      pretty = FALSE) %&gt;% # Do not merge VCE and 95% CI yet
@@ -2890,6 +2894,7 @@ table451b &lt;- vaccine %&gt;%
   sitrep::tab_survey(vacful,           # The variable to calculate proportions on
                      strata = NULL,    # To get the total we will leave this NULL
                      keep = c(1),      # The value of interest (fully vaccinated)
+                     method = &quot;xlogit&quot;,# Log transformation of the mean
                      wide = FALSE,     # Long format better for a lot of strata
                      deff = TRUE,      # Include the design effect in the output
                      pretty = FALSE) %&gt;% # Do not merge VCE and 95% CI yet
@@ -3026,6 +3031,7 @@ vactab_adder &lt;- function(designtab,
                      strata = UQ(stratum),    
                      keep = c(1),
                      na.rm = TRUE,
+                     method = &quot;xlogit&quot;,
                      wide = FALSE,     
                      deff = TRUE,      
                      pretty = FALSE) %&gt;% 
@@ -3046,6 +3052,7 @@ vactab_adder &lt;- function(designtab,
                      strata = NULL,    
                      keep = c(1),
                      na.rm = TRUE,
+                     method = &quot;xlogit&quot;,
                      wide = FALSE,     
                      deff = TRUE,      
                      pretty = FALSE) %&gt;% 
@@ -3093,6 +3100,7 @@ restab &lt;- vce_design %&gt;%
                      strata = minority,    
                      keep = c(1),
                      na.rm = TRUE,
+                     method = &quot;xlogit&quot;,
                      wide = FALSE,     
                      deff = TRUE,      
                      pretty = FALSE) %&gt;% 
