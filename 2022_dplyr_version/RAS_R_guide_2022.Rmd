@@ -657,7 +657,7 @@ The design effect can be calculated in R using mathematical operators
 with a simple formula:
 
 $$
-deff = 1 + (n - 1) * rho
+deff = 1 + (n - 1) \times rho
 $$
 
 where:
@@ -831,7 +831,9 @@ vaccine <- rio::import(here::here(file = "data", "vaccine4.dta"))  %>%
   
   
   # Label variables with pretty names for table:
-  expss::apply_labels(vaccrec = "Response status", 
+  labelled::set_variable_labels(
+                      ## variable name = variable label 
+                      vaccrec = "Response status", 
                       age = "Age in years", 
                       gender = "Gender of pupils",
                       urban = "Area type",
@@ -879,12 +881,19 @@ reptable <- vaccine %>%
   # Add descriptors of the stats presented to row labels:
   add_stat_label() %>% 
   
+  # individually label which row had which statistical test: 
+  separate_p_footnotes() %>% 
+  
   # Make variable names bold and italics:
   bold_labels() %>% 
   italicize_labels() %>% 
   
   # Tidy up column headers so stats are on second line:
-  modify_header(stat_by =  "**{level}**<br>N = {N}") 
+  # the reason this is dense is because the overall column is a stat column but has no defined levels
+  ## note if creating word doc you will need to use \n instead of <br> for line break
+  modify_header(
+    update = list(all_stat_cols(FALSE) ~ "**{level}**<br>N = {n}",
+                  stat_0 ~ "**Overall**<br>N = {N}"))
 
 ```
 
@@ -894,9 +903,9 @@ reptable <- vaccine %>%
 
 As mentioned earlier, the following sampling strategy was chosen: The
 country was stratified into six regions, which, apart from the capital
-region (Attica), were further subdivided into urban and rural areas, to
-create 11 strata (`strata` ). In each region school classes (clusters =
-`school`) were randomly selected with probability proportional to the
+region (Attica), were further subdivided into urban and rural areas, to
+create 11 strata (`strata`). In each region school classes (clusters =
+`school`) were randomly selected with probability proportional to the
 total number of first year grammar school pupils. The sampling frame of
 all school classrooms in the country for the academic year 2004-2005,
 was obtained from the Greek Ministry of Education. The list contained
@@ -925,12 +934,14 @@ below.
 The sampling fraction is given by:
 
 $$
-Sample fraction = n / N
+Sample fraction = \frac{n}{N}
 $$
 
 The sampling weights are the inverse of the sample fraction:
 
-$$Weight = 1 / (n / N)$$
+$$
+Weight = \frac{1}{(\frac{n}{N})}
+$$
 
 ```{r sample_weights}
 
@@ -1063,10 +1074,9 @@ desired.
 mmr2cov <- vaccine %>% 
   
   # Convert vaccrec to character:
-  mutate(vaccrec = as.character(vaccrec)) %>% 
-  
-  # Convert strata to character:
-  mutate(strata = as.character(strata)) %>% 
+  mutate(vaccrec = as.character(vaccrec), 
+         # Convert strata to character:
+         strata = as.character(strata)) %>% 
    
   # Filter for respondents only:
   dplyr::filter(vaccrec == "Respondents") %>% 
@@ -1106,14 +1116,25 @@ strata_frame <- strata_frame %>%
   mutate(pop_frac = Total_pupils * proportion)
 
 # Calculate the total vaccination coverage estimate for the first 3 strata:
-vc_total_03 <- round(x = (sum(strata_frame$pop_frac[1:3])
-                      /sum(strata_frame$Total_pupils[1:3])) * 100, 
-                     digits = 2)
+vc_total_03 <- strata_frame %>% 
+  # keep the first three rows
+  slice(1:3) %>% 
+  # calculate the percentage
+  summarise(
+    round(sum(pop_frac) / sum(Total_pupils) * 100, digits = 2)
+  ) %>% 
+  # get the number out of the dataframe 
+  pull()
+
 
 # Calculate the total vaccination coverage estimate for all 11 strata:
-vc_total_11 <- round(x = (sum(strata_frame$pop_frac)
-                      /sum(strata_frame$Total_pupils)) * 100, 
-                     digits = 2)
+vc_total_11 <- strata_frame %>% 
+  # calculate the percentage
+  summarise(
+    round(sum(pop_frac) / sum(Total_pupils) * 100, digits = 2)
+  ) %>% 
+  # get the number out of the dataframe 
+  pull()
 
 ###########################################
 # DISPLAY STRATIFIED RESULTS IN A TABLE
