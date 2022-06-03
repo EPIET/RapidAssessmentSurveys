@@ -1058,6 +1058,18 @@ using the `flextable` package. This creates a table object which can be
 saved to a Microsoft word document and edited in MS word later, if
 desired.
 
+*A note on statistical methods:*
+
+The `sitrep::tab_survey()` function uses methods to calculate the
+proportions, confidence intervals and design effect from the
+`survey::svyciprop()` function.
+
+If you type `?survey::svyciprop` in the console to look at the help page
+for this function, you will find further details on the different
+methods available. The default method is `logit` but we have used the
+`xlogit` method here as it is somewhat closer to the equivalent results
+that you would get if performing this analysis in STATA.
+
 ```{r mmr2_weighted_coverage}
 
 ###########################################
@@ -1243,9 +1255,9 @@ looking at:
 
 **R coding tips:**
 
-Refer to the blank tables (4.5.1 and 4.5.2) to decide how you will
-structure your analysis, using the techniques already demonstrated in
-the previous tasks.
+Refer to the blank tables in the main case study guide (4.5.1 and 4.5.2)
+to decide how you will structure your analysis, using the techniques
+already demonstrated in the previous tasks.
 
 You may wish to run the code from previous sessions before starting, to
 ensure that you are working with the most up to date `vaccine`
@@ -1298,7 +1310,7 @@ table451 <- vaccine %>%
   sitrep::tab_survey(vacful,           # The variable to calculate proportions on
                      strata = NULL,    # SRS has no strata
                      keep = c(1),      # The value of interest (fully vaccinated)
-                     method = "xlogit",# Log transformation of mean
+                     method = "xlogit",# Use CDC SUDAAN method
                      wide = FALSE,     # Long format better for a lot of strata
                      deff = TRUE,      # Include the design effect in the output
                      pretty = FALSE) %>% # Do not merge VCE and 95% CI yet
@@ -1342,10 +1354,10 @@ table451b <- vaccine %>%
   sitrep::tab_survey(vacful,           # The variable to calculate proportions on
                      strata = NULL,    # Weighted sampling has no strata
                      keep = c(1),      # The value of interest (fully vaccinated)
-                     method = "xlogit",# Log transformation of the mean
+                     na.rm = TRUE,     # Remove missing values
                      wide = FALSE,     # Long format better for a lot of strata
                      deff = TRUE,      # Include the design effect in the output
-                     method = "xlogit",  # Use CDC SUDAAN method
+                     method = "xlogit",# Use CDC SUDAAN method
                      pretty = FALSE) %>% # Do not merge VCE and 95% CI yet
   
   # Add a design column:
@@ -1388,10 +1400,9 @@ table451b <- vaccine %>%
   sitrep::tab_survey(vacful,           # The variable to calculate proportions on
                      strata = NULL,    # Weighted sampling has no strata
                      keep = c(1),      # The value of interest (fully vaccinated)
-                     method = "xlogit",# Log transformation of the mean
                      wide = FALSE,     # Long format better for a lot of strata
                      deff = TRUE,      # Include the design effect in the output
-                     method = "xlogit",  # Use CDC SUDAAN method
+                     method = "xlogit",# Use CDC SUDAAN method
                      pretty = FALSE) %>% # Do not merge VCE and 95% CI yet
   
   # Add a design column:
@@ -1443,10 +1454,9 @@ table451b <- vaccine %>%
   sitrep::tab_survey(vacful,           # The variable to calculate proportions on
                      strata = NULL,    # To get the total we will leave this NULL
                      keep = c(1),      # The value of interest (fully vaccinated)
-                     method = "xlogit",# Log transformation of the mean
                      wide = FALSE,     # Long format better for a lot of strata
                      deff = TRUE,      # Include the design effect in the output
-                     method = "xlogit",  # Use CDC SUDAAN method
+                     method = "xlogit",# Use CDC SUDAAN method
                      pretty = FALSE) %>% # Do not merge VCE and 95% CI yet
   
   # Add a design column:
@@ -1574,12 +1584,13 @@ intervals and the design effect for:
 We will then combine the results in a single table as for the previous
 section.
 
-Because most of this code is repetitive we will use the `map()` function from the 
-`purrr` package to iterate (repeat) code for each of this variables. This may 
-seem scary at first, but try to remember that we are just using the functions 
-from previous sessions and running in multiple times, once for each variable. 
-`purrr` will store the output in a list object, but using `bind_rows()` we easily
-and simply combine these in to a single data frame. 
+Because most of this code is repetitive we will use the `map()` function
+from the `purrr` package to iterate (repeat) code for each of this
+variables. This may seem scary at first, but try to remember that we are
+just using the functions from previous sessions and running in multiple
+times, once for each variable. `purrr` will store the output in a list
+object, but using `bind_rows()` we easily and simply combine these in to
+a single data frame.
 
 We will first create the survey design (which is the same for the whole
 table):
@@ -1602,13 +1613,12 @@ vce_design <- vaccine %>%
                           weights = Sample_weights, 
                           strata = strata) 
 
-
 ```
 
 Next, we will create the first results for DTP3 stratified by minority
-group and then by urban / rural area of residence using the `tab_survey()` function 
-from the `sitrep` package directly. 
-
+group and then by urban / rural area of residence using the
+`tab_survey()` function from the `sitrep` package, and `purr::map()` to
+loop over the two stratifiers:
 
 ```{r finaltab_dtp3stratified}
 
@@ -1633,12 +1643,14 @@ restab1 <- purrr::map(
                          strata = {x},  
                          keep = c(1),
                          na.rm = TRUE,
+                         method = "xlogit",
                          wide = FALSE,     
                          deff = TRUE,      
                          pretty = FALSE) %>% 
       
       # Rename minority column to stratum:
-      # note that here we dont need curly brackets (because we want it to be a character)
+      # note that here we dont need curly brackets 
+      # (because we want it to be a character)
       rename(stratum = x) %>%
       
       # Remove row with missing values:
@@ -1650,10 +1662,10 @@ restab1 <- purrr::map(
 
 ```
 
-
-For the next set of variables to tabulate, we do not require stratification. So 
-instead of iterating over the stratifying variable, we can iterate over each of 
-the vaccines to get an overall estimate for each.
+For the next set of variables to tabulate, we do not require
+stratification. Instead of iterating over the stratifying variable, we
+can iterate over each of the vaccines to get an overall estimate for
+each.
 
 ```{r finaltab_vaccines_overall}
 
@@ -1684,6 +1696,7 @@ restab2 <- purrr::map(
                          strata = NULL,  
                          keep = c(1),
                          na.rm = TRUE,
+                         method = "xlogit",
                          wide = FALSE,     
                          deff = TRUE,      
                          pretty = FALSE) %>% 
@@ -1696,9 +1709,10 @@ restab2 <- purrr::map(
 
 ```
 
-Next, we can look at vaccine completeness stratified by minority group and
-urban/rural residence. We repeat the above process to run each of the variables
-through the strata argument of the `tab_survey()` function from `sitrep`. 
+Next, we can look at vaccine completeness, stratified by minority group
+and urban/rural residence. We repeat the above process to run each of
+the variables through the strata argument of the `tab_survey()` function
+from `sitrep`.
 
 ```{r finaltab_completeness}
 
@@ -1715,6 +1729,7 @@ restab3 <- purrr::map(
                          strata = {x},  
                          keep = c(1),
                          na.rm = TRUE,
+                         method = "xlogit",
                          wide = FALSE,     
                          deff = TRUE,      
                          pretty = FALSE) %>% 
@@ -1728,15 +1743,12 @@ restab3 <- purrr::map(
 ) %>% 
   bind_rows()
 
-
-
 ```
 
-
-Finally we can run the same for vaccination timeliness. Note that we could have
-saved some repeating code by nesting `map()` arguments, to iterate over both 
-vaccines and strata groups. For simplicity, we have not done this, but if you have
-extra time - try this out. 
+Finally we can run the same for vaccination timeliness. Note that we
+could have saved some repeating code by nesting `map()` arguments, to
+iterate over both vaccines and strata groups. For simplicity, we have
+not done this, but if you have extra time - try this out.
 
 ```{r finaltab_timeliness}
 
@@ -1752,6 +1764,7 @@ restab4 <- purrr::map(
                          strata = {x},  
                          keep = c(1),
                          na.rm = TRUE,
+                         method = "xlogit",
                          wide = FALSE,     
                          deff = TRUE,      
                          pretty = FALSE) %>% 
@@ -1765,13 +1778,10 @@ restab4 <- purrr::map(
 ) %>% 
   bind_rows()
 
-
-
 ```
 
-
-Lastly, we can combine all the tables together and tidy up the decimals and add 
-percentages to make the results easier to read, as before.
+Lastly, we can combine all the tables together and tidy up the decimals
+and add percentages to make the results easier to read, as before.
 
 ```{r finaltab_printable}
 
@@ -1840,7 +1850,4 @@ restabpub <- restabpub %>%
   # Right-align last 2 columns (weighted VCE and 95% CI):
   flextable::align(j = 5:6, align = "right", part = "all")
 
-
 ```
-
-

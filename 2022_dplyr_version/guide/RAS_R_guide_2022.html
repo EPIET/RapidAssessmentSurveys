@@ -2553,6 +2553,16 @@ a subset of the variables in the <code>strata_frame</code> table for
 publication, using the <code>flextable</code> package. This creates a
 table object which can be saved to a Microsoft word document and edited
 in MS word later, if desired.</p>
+<p><em>A note on statistical methods:</em></p>
+<p>The <code>sitrep::tab_survey()</code> function uses methods to
+calculate the proportions, confidence intervals and design effect from
+the <code>survey::svyciprop()</code> function.</p>
+<p>If you type <code>?survey::svyciprop</code> in the console to look at
+the help page for this function, you will find further details on the
+different methods available. The default method is <code>logit</code>
+but we have used the <code>xlogit</code> method here as it is somewhat
+closer to the equivalent results that you would get if performing this
+analysis in STATA.</p>
 <pre class="r"><code>###########################################
 # CALCULATE MMR2 PROPORTIONS BY STRATA
 ###########################################
@@ -2723,9 +2733,9 @@ looking at:</p>
 <li><p>timeliness of vaccination (<code>vactime</code> )</p></li>
 </ul>
 <p><strong>R coding tips:</strong></p>
-<p>Refer to the blank tables (4.5.1 and 4.5.2) to decide how you will
-structure your analysis, using the techniques already demonstrated in
-the previous tasks.</p>
+<p>Refer to the blank tables in the main case study guide (4.5.1 and
+4.5.2) to decide how you will structure your analysis, using the
+techniques already demonstrated in the previous tasks.</p>
 <p>You may wish to run the code from previous sessions before starting,
 to ensure that you are working with the most up to date
 <code>vaccine</code> data.frame that includes any cleaning, labelling,
@@ -2771,16 +2781,16 @@ table451 &lt;- vaccine %&gt;%
   sitrep::tab_survey(vacful,           # The variable to calculate proportions on
                      strata = NULL,    # SRS has no strata
                      keep = c(1),      # The value of interest (fully vaccinated)
-                     method = &quot;xlogit&quot;,# Log transformation of mean
+                     method = &quot;xlogit&quot;,# Use CDC SUDAAN method
                      wide = FALSE,     # Long format better for a lot of strata
                      deff = TRUE,      # Include the design effect in the output
                      pretty = FALSE) %&gt;% # Do not merge VCE and 95% CI yet
   
   # Add a design column:
-  mutate(design = c(&quot;Simple random sampling&quot;)) %&gt;% 
+  mutate(design = &quot;Simple random sampling&quot;) %&gt;% 
   
   # Update the design effect where NA to 1 (representing no effect):
-  mutate(deff = case_when(is.na(deff) ~ 1))</code></pre>
+  mutate(deff = replace_na(deff, 1))</code></pre>
 <p><em>B - Sampling with weights:</em></p>
 <p>We can compute vaccine coverage with weights by repeating the steps
 in the previous chunk, but this time including the
@@ -2808,9 +2818,10 @@ table451b &lt;- vaccine %&gt;%
   sitrep::tab_survey(vacful,           # The variable to calculate proportions on
                      strata = NULL,    # Weighted sampling has no strata
                      keep = c(1),      # The value of interest (fully vaccinated)
-                     method = &quot;xlogit&quot;,# Log transformation of the mean
+                     na.rm = TRUE,     # Remove missing values
                      wide = FALSE,     # Long format better for a lot of strata
                      deff = TRUE,      # Include the design effect in the output
+                     method = &quot;xlogit&quot;,# Use CDC SUDAAN method
                      pretty = FALSE) %&gt;% # Do not merge VCE and 95% CI yet
   
   # Add a design column:
@@ -2847,9 +2858,9 @@ table451b &lt;- vaccine %&gt;%
   sitrep::tab_survey(vacful,           # The variable to calculate proportions on
                      strata = NULL,    # Weighted sampling has no strata
                      keep = c(1),      # The value of interest (fully vaccinated)
-                     method = &quot;xlogit&quot;,# Log transformation of the mean
                      wide = FALSE,     # Long format better for a lot of strata
                      deff = TRUE,      # Include the design effect in the output
+                     method = &quot;xlogit&quot;,# Use CDC SUDAAN method
                      pretty = FALSE) %&gt;% # Do not merge VCE and 95% CI yet
   
   # Add a design column:
@@ -2894,9 +2905,9 @@ table451b &lt;- vaccine %&gt;%
   sitrep::tab_survey(vacful,           # The variable to calculate proportions on
                      strata = NULL,    # To get the total we will leave this NULL
                      keep = c(1),      # The value of interest (fully vaccinated)
-                     method = &quot;xlogit&quot;,# Log transformation of the mean
                      wide = FALSE,     # Long format better for a lot of strata
                      deff = TRUE,      # Include the design effect in the output
+                     method = &quot;xlogit&quot;,# Use CDC SUDAAN method
                      pretty = FALSE) %&gt;% # Do not merge VCE and 95% CI yet
   
   # Add a design column:
@@ -2915,18 +2926,27 @@ them easier to read.</p>
 table451pub &lt;- table451 %&gt;% 
   
   # Now we can convert the estimates and 95% CI to percentages:
-  mutate(across(c(proportion, proportion_low, proportion_upp), 
-                ~ percent(.x, accuracy = 0.01))) %&gt;% 
+  mutate(
+    across(
+      # for each column which has proportion in the name
+      contains(&quot;proportion&quot;), 
+      # convert to a percentage
+      ~ percent(.x, accuracy = 0.01))) %&gt;% 
   
   # And finally we can trim the decimal places for other columns:
-  mutate(deff = round(x = deff, digits = 2)) %&gt;% 
+  mutate(deff = round(deff, digits = 2)) %&gt;% 
   
-  # Create merged column for 95% CIs:
-  mutate(CI95 = paste0(&quot;[&quot;, 
-                       proportion_low, 
-                       &quot; - &quot;, 
-                       proportion_upp, 
-                       &quot;]&quot;)) %&gt;% 
+  # Create merged column for 95% CIs: 
+  tidyr::unite(
+    # name the new column CI95
+    col = &quot;CI95&quot;,
+    # state which two columns to combine
+    proportion_low, proportion_upp, 
+    # separate the values with a dash 
+    sep = &quot; - &quot;, 
+    # drop the old columns
+    remove = TRUE
+    ) %&gt;% 
   
   # Select the columns to print:
   dplyr::select(design, 
@@ -2990,85 +3010,14 @@ stratify by minority and urban / rural residence.</p></li>
 </ol>
 <p>We will then combine the results in a single table as for the
 previous section.</p>
-<p>Because there are a large number of variables, we will first define a
-helper function which we can use once we have created the first output
-table.</p>
-<p>The function is called <code>vactab_adder()</code> and has the
-following arguments:</p>
-<ul>
-<li><p><em>designtab</em> : a survey design object</p></li>
-<li><p><em>varname</em> : the name of the variable that you wish to use
-to estimate vaccine coverage</p></li>
-<li><p><em>stratum</em> : the name of the variable that you wish to use
-to stratify the results</p></li>
-<li><p><em>restable</em> : the name of an existing results table that
-you would like to add new results to.</p></li>
-</ul>
-<pre class="r"><code>#########################################
-# FUNCTION VACTAB_ADDER
-#########################################
-
-# Define function:
-vactab_adder &lt;- function(designtab, 
-                         varname,
-                         stratum = NULL,
-                         restable ){
-  
-  # Unquote the variable to estimate on:
-  varname = enquo(varname)
-  
-  # Check if stratum is not null:
-  if(!is.null(stratum)){
-    
-    # Unquote stratum variable:
-    stratum = enquo(stratum)
-    
-    # Input survey design:
-    btab = designtab %&gt;% 
-    
-    # Add variable to estimate:
-    sitrep::tab_survey(UQ(varname),           
-                     strata = UQ(stratum),    
-                     keep = c(1),
-                     na.rm = TRUE,
-                     method = &quot;xlogit&quot;,
-                     wide = FALSE,     
-                     deff = TRUE,      
-                     pretty = FALSE) %&gt;% 
-      
-    # Rename stratifier column to stratum:
-    rename(stratum = UQ(stratum)) %&gt;% 
-    
-    # Remove rows with missing values:
-    filter(!is.na(stratum))
-
-  } else if (is.null(stratum)) {
-    
-  # Input survey design:
-  btab = designtab %&gt;% 
-    
-    # Add variable to estimate:
-    sitrep::tab_survey(UQ(varname),           
-                     strata = NULL,    
-                     keep = c(1),
-                     na.rm = TRUE,
-                     method = &quot;xlogit&quot;,
-                     wide = FALSE,     
-                     deff = TRUE,      
-                     pretty = FALSE) %&gt;% 
-  
-    # Create stratum column:
-    mutate(stratum = &quot;Overall&quot;)
-
-  }
-  
-  # Bind new table to base table:
-  restable = bind_rows(restable, btab)
-  
-  # Return results in updated table:
-  return(restable)
-  
-}</code></pre>
+<p>Because most of this code is repetitive we will use the
+<code>map()</code> function from the <code>purrr</code> package to
+iterate (repeat) code for each of this variables. This may seem scary at
+first, but try to remember that we are just using the functions from
+previous sessions and running in multiple times, once for each variable.
+<code>purrr</code> will store the output in a list object, but using
+<code>bind_rows()</code> we easily and simply combine these in to a
+single data frame.</p>
 <p>We will first create the survey design (which is the same for the
 whole table):</p>
 <pre class="r"><code>vce_design &lt;- vaccine %&gt;% 
@@ -3087,44 +3036,50 @@ whole table):</p>
                           weights = Sample_weights, 
                           strata = strata) </code></pre>
 <p>Next, we will create the first results for DTP3 stratified by
-minority group using the <code>tab_survey()</code> function from the
-<code>sitrep</code> package directly:</p>
-<pre class="r"><code>####################################
-# Estimate VC for DTP3 by minority:
-####################################
+minority group and then by urban / rural area of residence using the
+<code>tab_survey()</code> function from the <code>sitrep</code> package,
+and <code>purr::map()</code> to loop over the two stratifiers:</p>
+<pre class="r"><code>#############################################
+# Estimate VC for DTP3 by minority and urban:
+#############################################
 
-restab &lt;- vce_design %&gt;% 
-  
-  # Create proportions for DTP3 by minority:
-  sitrep::tab_survey(dtp3yn,           
-                     strata = minority,    
-                     keep = c(1),
-                     na.rm = TRUE,
-                     method = &quot;xlogit&quot;,
-                     wide = FALSE,     
-                     deff = TRUE,      
-                     pretty = FALSE) %&gt;% 
-  
-  # Rename minority column to stratum:
-  rename(stratum = minority) %&gt;% 
-  
-  # Remove row with missing values:
-  filter(!is.na(stratum))</code></pre>
-<p>For the DTP3 vaccine coverage estimate by urban / rural area of
-residence, we can now use the <code>vactab_adder()</code> function to
-update the existing <code>restable</code>:</p>
-<pre class="r"><code>#####################################
-# DTP3 by urban rural area:
-#####################################
 
-# Add VCE for DTP3 by urban rural stratification:
-restab &lt;- vactab_adder(designtab = vce_design, 
-                       varname = &quot;dtp3yn&quot;, 
-                       stratum = &quot;urban&quot;, 
-                       restable = restab)</code></pre>
-<p>Because the next set of variables to tabulate do not require
-stratification, we can add them by feeding them into the
-<code>vactab_adder()</code> function with a <code>forloop</code>.</p>
+restab1 &lt;- purrr::map(
+  # for each of the variables listed
+  .x = c(&quot;minority&quot;, &quot;urban&quot;), 
+  # run the following function (replacing x with each variable one-by-one)
+  .f = function(x) {
+    
+    # using the study design object 
+    vce_design %&gt;% 
+      # Create proportions for DTP3 stratified by the current variable being run:
+      sitrep::tab_survey(dtp3yn, 
+                         # purrr replaces x with &quot;minority&quot; and then with &quot;urban&quot;
+                         # x is in curly brackets so it is interpreted as a 
+                         # variable name instead of a character
+                         strata = {x},  
+                         keep = c(1),
+                         na.rm = TRUE,
+                         method = &quot;xlogit&quot;,
+                         wide = FALSE,     
+                         deff = TRUE,      
+                         pretty = FALSE) %&gt;% 
+      
+      # Rename minority column to stratum:
+      # note that here we dont need curly brackets 
+      # (because we want it to be a character)
+      rename(stratum = x) %&gt;%
+      
+      # Remove row with missing values:
+      filter(!is.na(stratum))
+  }
+) %&gt;% 
+  ## pull the results out of lists and in to a single dataframe
+  bind_rows()</code></pre>
+<p>For the next set of variables to tabulate, we do not require
+stratification. Instead of iterating over the stratifying variable, we
+can iterate over each of the vaccines to get an overall estimate for
+each.</p>
 <pre class="r"><code># Create a list of variables to estimate vaccine coverage with:
 varlist &lt;- c(&quot;dtp4yn&quot;, 
              &quot;dtp5yn&quot;, 
@@ -3137,64 +3092,132 @@ varlist &lt;- c(&quot;dtp4yn&quot;,
              &quot;pne1yn&quot;, 
              &quot;var1yn&quot;)
 
-# Now we can pass the variables to the table in a for-loop:
-for(var in 1:length(varlist)){
+
+restab2 &lt;- purrr::map(
+  # for each of the variables listed
+  .x = varlist, 
+  # run the following function (replacing x with each variable one-by-one)
+  .f = function(x) {
+    
+    vce_design %&gt;% 
+      # purrr replaces x with each of the vaccines listed
+        # x is in curly brackets so it is interpreted as a 
+        # variable name instead of a character
+      sitrep::tab_survey({x},           
+                         strata = NULL,  
+                         keep = c(1),
+                         na.rm = TRUE,
+                         method = &quot;xlogit&quot;,
+                         wide = FALSE,     
+                         deff = TRUE,      
+                         pretty = FALSE) %&gt;% 
+      
+      # Create stratum column:
+    mutate(stratum = &quot;Overall&quot;)
+  }
+) %&gt;% 
+  bind_rows()</code></pre>
+<p>Next, we can look at vaccine completeness, stratified by minority
+group and urban/rural residence. We repeat the above process to run each
+of the variables through the strata argument of the
+<code>tab_survey()</code> function from <code>sitrep</code>.</p>
+<pre class="r"><code>restab3 &lt;- purrr::map(
+  .x = c(&quot;minority&quot;, &quot;urban&quot;), 
+  .f = function(x) {
+    
+    vce_design %&gt;%
+      sitrep::tab_survey(vacful, 
+                         # purrr replaces x with &quot;minority&quot; and then with &quot;urban&quot;
+                         # x is in curly brackets so it is interpreted as a 
+                         # variable name instead of a character
+                         strata = {x},  
+                         keep = c(1),
+                         na.rm = TRUE,
+                         method = &quot;xlogit&quot;,
+                         wide = FALSE,     
+                         deff = TRUE,      
+                         pretty = FALSE) %&gt;% 
+      
+      # Rename minority column to stratum:
+      rename(stratum = x)  %&gt;% 
   
-  # Pass them through the function:
-  restab &lt;- vactab_adder(designtab = vce_design, 
-                         varname = varlist[var],
-                         stratum = NULL,
-                         restable = restab)
-}</code></pre>
-<p>Next, we can look at vaccine completeness stratified by minority
-group and urban / rural residence. These can also quickly be added to
-the table using the <code>vactab_adder()</code> function:</p>
-<pre class="r"><code># First we will stratify by minority group:
-restab &lt;- vactab_adder(designtab = vce_design, 
-                       varname = &quot;vacful&quot;, 
-                       stratum = &quot;minority&quot;, 
-                       restable = restab)
+      # Remove row with missing values:
+      filter(!is.na(stratum))
+  }
+) %&gt;% 
+  bind_rows()</code></pre>
+<p>Finally we can run the same for vaccination timeliness. Note that we
+could have saved some repeating code by nesting <code>map()</code>
+arguments, to iterate over both vaccines and strata groups. For
+simplicity, we have not done this, but if you have extra time - try this
+out.</p>
+<pre class="r"><code>restab4 &lt;- purrr::map(
+  .x = c(&quot;minority&quot;, &quot;urban&quot;), 
+  .f = function(x) {
+    
+    vce_design %&gt;% 
+      sitrep::tab_survey(vactime, 
+                         # purrr replaces x with &quot;minority&quot; and then with &quot;urban&quot;
+                         # x is in curly brackets so it is interpreted as a 
+                         # variable name instead of a character
+                         strata = {x},  
+                         keep = c(1),
+                         na.rm = TRUE,
+                         method = &quot;xlogit&quot;,
+                         wide = FALSE,     
+                         deff = TRUE,      
+                         pretty = FALSE) %&gt;% 
+      
+      # Rename minority column to stratum:
+      rename(stratum = x) %&gt;%
+      
+      # Remove row with missing values:
+      filter(!is.na(stratum))
+  }
+) %&gt;% 
+  bind_rows()</code></pre>
+<p>Lastly, we can combine all the tables together and tidy up the
+decimals and add percentages to make the results easier to read, as
+before.</p>
+<pre class="r"><code># combine each of the result tables in to one
+restabpub &lt;- bind_rows(restab1, 
+                       restab2,
+                       restab3,
+                       restab4
+                       ) %&gt;% 
+  # to be able to ignore the value column (which only contains 1s)
+  ungroup()
 
-# Next we can add urban / rural strata:
-restab &lt;- vactab_adder(designtab = vce_design, 
-                       varname = &quot;vacful&quot;, 
-                       stratum = &quot;urban&quot;, 
-                       restable = restab)</code></pre>
-<p>Finally we can add vaccination timeliness to the table:</p>
-<pre class="r"><code># First we will stratify by minority group:
-restab &lt;- vactab_adder(designtab = vce_design, 
-                       varname = &quot;vactime&quot;, 
-                       stratum = &quot;minority&quot;, 
-                       restable = restab)
 
-# Next we can add urban / rural strata:
-restab &lt;- vactab_adder(designtab = vce_design, 
-                       varname = &quot;vactime&quot;, 
-                       stratum = &quot;urban&quot;, 
-                       restable = restab)</code></pre>
-<p>Lastly, we can tidy up the decimals and add percentages to make the
-results easier to read, as before.</p>
-<pre class="r"><code># Create publishable table of results:
-restabpub &lt;- restab %&gt;% 
+# Create publishable table of results:
+restabpub &lt;- restabpub %&gt;% 
   
   # Now we can convert the estimates and 95% CI to percentages:
-  mutate(across(c(proportion, proportion_low, proportion_upp), 
-                ~ percent(.x, accuracy = 0.01))) %&gt;% 
+  mutate(
+    across(
+      # for each column which has proportion in the name
+      contains(&quot;proportion&quot;), 
+      # convert to a percentage
+      ~ percent(.x, accuracy = 0.01))) %&gt;%
   
   # And finally we can trim the decimal places for other columns:
   mutate(across(c(n, deff), 
                 ~ round(.x, digits = 2))) %&gt;% 
   
-  # Create merged column for 95% CIs:
-  mutate(CI95 = paste0(&quot;[&quot;, 
-                       proportion_low, 
-                       &quot; - &quot;, 
-                       proportion_upp, 
-                       &quot;]&quot;)) %&gt;% 
+  # Create merged column for 95% CIs: 
+  tidyr::unite(
+    # name the new column CI95
+    col = &quot;CI95&quot;,
+    # state which two columns to combine
+    proportion_low, proportion_upp, 
+    # separate the values with a dash 
+    sep = &quot; - &quot;, 
+    # drop the old columns
+    remove = TRUE
+    ) %&gt;% 
   
   # Select the columns to print:
-  dplyr::select(value,
-                variable,
+  dplyr::select(variable,
                 stratum,
                 deff, 
                 n, 
@@ -3208,8 +3231,7 @@ restabpub &lt;- restab %&gt;%
   flextable::theme_booktabs(bold_header = TRUE) %&gt;% 
   
   # Add labels:
-  flextable::set_header_labels(values = list(value = &quot;Vaccinated&quot;,
-                                             variable = &quot;Vaccine&quot;,
+  flextable::set_header_labels(values = list(variable = &quot;Vaccine&quot;,
                                              stratum = &quot;Stratum&quot;,
                                              deff = &quot;Design effect&quot;,
                                              n = &quot;VCE (n)&quot;, 
@@ -3220,7 +3242,7 @@ restabpub &lt;- restab %&gt;%
   flextable::set_table_properties(layout = &quot;autofit&quot;) %&gt;% 
   
   # Right-align last 2 columns (weighted VCE and 95% CI):
-  flextable::align(j = 6:7, align = &quot;right&quot;, part = &quot;all&quot;)</code></pre>
+  flextable::align(j = 5:6, align = &quot;right&quot;, part = &quot;all&quot;)</code></pre>
 </div>
 </div>
 </div>
