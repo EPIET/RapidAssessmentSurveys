@@ -1304,10 +1304,10 @@ table451 <- vaccine %>%
                      pretty = FALSE) %>% # Do not merge VCE and 95% CI yet
   
   # Add a design column:
-  mutate(design = c("Simple random sampling")) %>% 
+  mutate(design = "Simple random sampling") %>% 
   
   # Update the design effect where NA to 1 (representing no effect):
-  mutate(deff = case_when(is.na(deff) ~ 1))
+  mutate(deff = replace_na(deff, 1))
   
 ```
 
@@ -1345,6 +1345,7 @@ table451b <- vaccine %>%
                      method = "xlogit",# Log transformation of the mean
                      wide = FALSE,     # Long format better for a lot of strata
                      deff = TRUE,      # Include the design effect in the output
+                     method = "xlogit",  # Use CDC SUDAAN method
                      pretty = FALSE) %>% # Do not merge VCE and 95% CI yet
   
   # Add a design column:
@@ -1390,6 +1391,7 @@ table451b <- vaccine %>%
                      method = "xlogit",# Log transformation of the mean
                      wide = FALSE,     # Long format better for a lot of strata
                      deff = TRUE,      # Include the design effect in the output
+                     method = "xlogit",  # Use CDC SUDAAN method
                      pretty = FALSE) %>% # Do not merge VCE and 95% CI yet
   
   # Add a design column:
@@ -1444,6 +1446,7 @@ table451b <- vaccine %>%
                      method = "xlogit",# Log transformation of the mean
                      wide = FALSE,     # Long format better for a lot of strata
                      deff = TRUE,      # Include the design effect in the output
+                     method = "xlogit",  # Use CDC SUDAAN method
                      pretty = FALSE) %>% # Do not merge VCE and 95% CI yet
   
   # Add a design column:
@@ -1468,18 +1471,27 @@ them easier to read.
 table451pub <- table451 %>% 
   
   # Now we can convert the estimates and 95% CI to percentages:
-  mutate(across(c(proportion, proportion_low, proportion_upp), 
-                ~ percent(.x, accuracy = 0.01))) %>% 
+  mutate(
+    across(
+      # for each column which has proportion in the name
+      contains("proportion"), 
+      # convert to a percentage
+      ~ percent(.x, accuracy = 0.01))) %>% 
   
   # And finally we can trim the decimal places for other columns:
-  mutate(deff = round(x = deff, digits = 2)) %>% 
+  mutate(deff = round(deff, digits = 2)) %>% 
   
-  # Create merged column for 95% CIs:
-  mutate(CI95 = paste0("[", 
-                       proportion_low, 
-                       " - ", 
-                       proportion_upp, 
-                       "]")) %>% 
+  # Create merged column for 95% CIs: 
+  tidyr::unite(
+    # name the new column CI95
+    col = "CI95",
+    # state which two columns to combine
+    proportion_low, proportion_upp, 
+    # separate the values with a dash 
+    sep = " - ", 
+    # drop the old columns
+    remove = TRUE
+    ) %>% 
   
   # Select the columns to print:
   dplyr::select(design, 
@@ -1562,92 +1574,12 @@ intervals and the design effect for:
 We will then combine the results in a single table as for the previous
 section.
 
-Because there are a large number of variables, we will first define a
-helper function which we can use once we have created the first output
-table.
-
-The function is called `vactab_adder()` and has the following arguments:
-
--   *designtab* : a survey design object
-
--   *varname* : the name of the variable that you wish to use to
-    estimate vaccine coverage
-
--   *stratum* : the name of the variable that you wish to use to
-    stratify the results
-
--   *restable* : the name of an existing results table that you would
-    like to add new results to.
-
-```{r finaltab_vactab_adder}
-
-#########################################
-# FUNCTION VACTAB_ADDER
-#########################################
-
-# Define function:
-vactab_adder <- function(designtab, 
-                         varname,
-                         stratum = NULL,
-                         restable ){
-  
-  # Unquote the variable to estimate on:
-  varname = enquo(varname)
-  
-  # Check if stratum is not null:
-  if(!is.null(stratum)){
-    
-    # Unquote stratum variable:
-    stratum = enquo(stratum)
-    
-    # Input survey design:
-    btab = designtab %>% 
-    
-    # Add variable to estimate:
-    sitrep::tab_survey(UQ(varname),           
-                     strata = UQ(stratum),    
-                     keep = c(1),
-                     na.rm = TRUE,
-                     method = "xlogit",
-                     wide = FALSE,     
-                     deff = TRUE,      
-                     pretty = FALSE) %>% 
-      
-    # Rename stratifier column to stratum:
-    rename(stratum = UQ(stratum)) %>% 
-    
-    # Remove rows with missing values:
-    filter(!is.na(stratum))
-
-  } else if (is.null(stratum)) {
-    
-  # Input survey design:
-  btab = designtab %>% 
-    
-    # Add variable to estimate:
-    sitrep::tab_survey(UQ(varname),           
-                     strata = NULL,    
-                     keep = c(1),
-                     na.rm = TRUE,
-                     method = "xlogit",
-                     wide = FALSE,     
-                     deff = TRUE,      
-                     pretty = FALSE) %>% 
-  
-    # Create stratum column:
-    mutate(stratum = "Overall")
-
-  }
-  
-  # Bind new table to base table:
-  restable = bind_rows(restable, btab)
-  
-  # Return results in updated table:
-  return(restable)
-  
-}
-
-```
+Because most of this code is repetitive we will use the `map()` function from the 
+`purrr` package to iterate (repeat) code for each of this variables. This may 
+seem scary at first, but try to remember that we are just using the functions 
+from previous sessions and running in multiple times, once for each variable. 
+`purrr` will store the output in a list object, but using `bind_rows()` we easily
+and simply combine these in to a single data frame. 
 
 We will first create the survey design (which is the same for the whole
 table):
@@ -1674,56 +1606,56 @@ vce_design <- vaccine %>%
 ```
 
 Next, we will create the first results for DTP3 stratified by minority
-group using the `tab_survey()` function from the `sitrep` package
-directly:
+group and then by urban / rural area of residence using the `tab_survey()` function 
+from the `sitrep` package directly. 
 
 
-```{r finaltab_dtp3minority}
+```{r finaltab_dtp3stratified}
 
-####################################
-# Estimate VC for DTP3 by minority:
-####################################
-
-restab <- vce_design %>% 
-  
-  # Create proportions for DTP3 by minority:
-  sitrep::tab_survey(dtp3yn,           
-                     strata = minority,    
-                     keep = c(1),
-                     na.rm = TRUE,
-                     method = "xlogit",
-                     wide = FALSE,     
-                     deff = TRUE,      
-                     pretty = FALSE) %>% 
-  
-  # Rename minority column to stratum:
-  rename(stratum = minority) %>% 
-  
-  # Remove row with missing values:
-  filter(!is.na(stratum))
-
-```
+#############################################
+# Estimate VC for DTP3 by minority and urban:
+#############################################
 
 
-For the DTP3 vaccine coverage estimate by urban / rural area of residence, we can now use the `vactab_adder()` function to update the existing `restable`:
-
-```{r finaltab_dtp3urban}
-
-#####################################
-# DTP3 by urban rural area:
-#####################################
-
-# Add VCE for DTP3 by urban rural stratification:
-restab <- vactab_adder(designtab = vce_design, 
-                       varname = "dtp3yn", 
-                       stratum = "urban", 
-                       restable = restab)
+restab1 <- purrr::map(
+  # for each of the variables listed
+  .x = c("minority", "urban"), 
+  # run the following function (replacing x with each variable one-by-one)
+  .f = function(x) {
+    
+    # using the study design object 
+    vce_design %>% 
+      # Create proportions for DTP3 stratified by the current variable being run:
+      sitrep::tab_survey(dtp3yn, 
+                         # purrr replaces x with "minority" and then with "urban"
+                         # x is in curly brackets so it is interpreted as a 
+                         # variable name instead of a character
+                         strata = {x},  
+                         keep = c(1),
+                         na.rm = TRUE,
+                         wide = FALSE,     
+                         deff = TRUE,      
+                         pretty = FALSE) %>% 
+      
+      # Rename minority column to stratum:
+      # note that here we dont need curly brackets (because we want it to be a character)
+      rename(stratum = x) %>%
+      
+      # Remove row with missing values:
+      filter(!is.na(stratum))
+  }
+) %>% 
+  ## pull the results out of lists and in to a single dataframe
+  bind_rows()
 
 ```
 
-Because the next set of variables to tabulate do not require stratification, we can add them by feeding them into the `vactab_adder()` function with a `forloop`.
 
-```{r finaltab_loop_vaccines}
+For the next set of variables to tabulate, we do not require stratification. So 
+instead of iterating over the stratifying variable, we can iterate over each of 
+the vaccines to get an overall estimate for each.
+
+```{r finaltab_vaccines_overall}
 
 # Create a list of variables to estimate vaccine coverage with:
 varlist <- c("dtp4yn", 
@@ -1737,82 +1669,151 @@ varlist <- c("dtp4yn",
              "pne1yn", 
              "var1yn")
 
-# Now we can pass the variables to the table in a for-loop:
-for(var in 1:length(varlist)){
-  
-  # Pass them through the function:
-  restab <- vactab_adder(designtab = vce_design, 
-                         varname = varlist[var],
-                         stratum = NULL,
-                         restable = restab)
-}
+
+restab2 <- purrr::map(
+  # for each of the variables listed
+  .x = varlist, 
+  # run the following function (replacing x with each variable one-by-one)
+  .f = function(x) {
+    
+    vce_design %>% 
+      # purrr replaces x with each of the vaccines listed
+        # x is in curly brackets so it is interpreted as a 
+        # variable name instead of a character
+      sitrep::tab_survey({x},           
+                         strata = NULL,  
+                         keep = c(1),
+                         na.rm = TRUE,
+                         wide = FALSE,     
+                         deff = TRUE,      
+                         pretty = FALSE) %>% 
+      
+      # Create stratum column:
+    mutate(stratum = "Overall")
+  }
+) %>% 
+  bind_rows()
 
 ```
 
-Next, we can look at vaccine completeness stratified by minority group and urban / rural residence.  These can also quickly be added to the table using the `vactab_adder()` function:
+Next, we can look at vaccine completeness stratified by minority group and
+urban/rural residence. We repeat the above process to run each of the variables
+through the strata argument of the `tab_survey()` function from `sitrep`. 
 
 ```{r finaltab_completeness}
 
-# First we will stratify by minority group:
-restab <- vactab_adder(designtab = vce_design, 
-                       varname = "vacful", 
-                       stratum = "minority", 
-                       restable = restab)
 
-# Next we can add urban / rural strata:
-restab <- vactab_adder(designtab = vce_design, 
-                       varname = "vacful", 
-                       stratum = "urban", 
-                       restable = restab)
+restab3 <- purrr::map(
+  .x = c("minority", "urban"), 
+  .f = function(x) {
+    
+    vce_design %>%
+      sitrep::tab_survey(vacful, 
+                         # purrr replaces x with "minority" and then with "urban"
+                         # x is in curly brackets so it is interpreted as a 
+                         # variable name instead of a character
+                         strata = {x},  
+                         keep = c(1),
+                         na.rm = TRUE,
+                         wide = FALSE,     
+                         deff = TRUE,      
+                         pretty = FALSE) %>% 
+      
+      # Rename minority column to stratum:
+      rename(stratum = x)  %>% 
+  
+      # Remove row with missing values:
+      filter(!is.na(stratum))
+  }
+) %>% 
+  bind_rows()
+
 
 
 ```
 
 
-Finally we can add vaccination timeliness to the table:
+Finally we can run the same for vaccination timeliness. Note that we could have
+saved some repeating code by nesting `map()` arguments, to iterate over both 
+vaccines and strata groups. For simplicity, we have not done this, but if you have
+extra time - try this out. 
 
 ```{r finaltab_timeliness}
 
-# First we will stratify by minority group:
-restab <- vactab_adder(designtab = vce_design, 
-                       varname = "vactime", 
-                       stratum = "minority", 
-                       restable = restab)
+restab4 <- purrr::map(
+  .x = c("minority", "urban"), 
+  .f = function(x) {
+    
+    vce_design %>% 
+      sitrep::tab_survey(vactime, 
+                         # purrr replaces x with "minority" and then with "urban"
+                         # x is in curly brackets so it is interpreted as a 
+                         # variable name instead of a character
+                         strata = {x},  
+                         keep = c(1),
+                         na.rm = TRUE,
+                         wide = FALSE,     
+                         deff = TRUE,      
+                         pretty = FALSE) %>% 
+      
+      # Rename minority column to stratum:
+      rename(stratum = x) %>%
+      
+      # Remove row with missing values:
+      filter(!is.na(stratum))
+  }
+) %>% 
+  bind_rows()
 
-# Next we can add urban / rural strata:
-restab <- vactab_adder(designtab = vce_design, 
-                       varname = "vactime", 
-                       stratum = "urban", 
-                       restable = restab)
+
 
 ```
 
 
-Lastly, we can tidy up the decimals and add percentages to make the results easier to read, as before.
+Lastly, we can combine all the tables together and tidy up the decimals and add 
+percentages to make the results easier to read, as before.
 
 ```{r finaltab_printable}
 
+# combine each of the result tables in to one
+restabpub <- bind_rows(restab1, 
+                       restab2,
+                       restab3,
+                       restab4
+                       ) %>% 
+  # to be able to ignore the value column (which only contains 1s)
+  ungroup()
+
+
 # Create publishable table of results:
-restabpub <- restab %>% 
+restabpub <- restabpub %>% 
   
   # Now we can convert the estimates and 95% CI to percentages:
-  mutate(across(c(proportion, proportion_low, proportion_upp), 
-                ~ percent(.x, accuracy = 0.01))) %>% 
+  mutate(
+    across(
+      # for each column which has proportion in the name
+      contains("proportion"), 
+      # convert to a percentage
+      ~ percent(.x, accuracy = 0.01))) %>%
   
   # And finally we can trim the decimal places for other columns:
   mutate(across(c(n, deff), 
                 ~ round(.x, digits = 2))) %>% 
   
-  # Create merged column for 95% CIs:
-  mutate(CI95 = paste0("[", 
-                       proportion_low, 
-                       " - ", 
-                       proportion_upp, 
-                       "]")) %>% 
+  # Create merged column for 95% CIs: 
+  tidyr::unite(
+    # name the new column CI95
+    col = "CI95",
+    # state which two columns to combine
+    proportion_low, proportion_upp, 
+    # separate the values with a dash 
+    sep = " - ", 
+    # drop the old columns
+    remove = TRUE
+    ) %>% 
   
   # Select the columns to print:
-  dplyr::select(value,
-                variable,
+  dplyr::select(variable,
                 stratum,
                 deff, 
                 n, 
@@ -1826,8 +1827,7 @@ restabpub <- restab %>%
   flextable::theme_booktabs(bold_header = TRUE) %>% 
   
   # Add labels:
-  flextable::set_header_labels(values = list(value = "Vaccinated",
-                                             variable = "Vaccine",
+  flextable::set_header_labels(values = list(variable = "Vaccine",
                                              stratum = "Stratum",
                                              deff = "Design effect",
                                              n = "VCE (n)", 
@@ -1838,7 +1838,7 @@ restabpub <- restab %>%
   flextable::set_table_properties(layout = "autofit") %>% 
   
   # Right-align last 2 columns (weighted VCE and 95% CI):
-  flextable::align(j = 6:7, align = "right", part = "all")
+  flextable::align(j = 5:6, align = "right", part = "all")
 
 
 ```
