@@ -1083,6 +1083,7 @@ mmr2cov <- vaccine %>%
   sitrep::tab_survey(mmr2yn,           # The variable to calculate proportions on
                      strata = strata,  # The variable containing the strata
                      keep = c(1),      # The value of interest (mmr2 vaccinated)
+                     method = "xlogit",# Log transformation of the mean
                      wide = FALSE,     # Long format better for a lot of strata
                      deff = TRUE,      # Include the design effect in the output
                      pretty = FALSE) %>% # Do not convert to percent (yet)
@@ -1297,6 +1298,7 @@ table451 <- vaccine %>%
   sitrep::tab_survey(vacful,           # The variable to calculate proportions on
                      strata = NULL,    # SRS has no strata
                      keep = c(1),      # The value of interest (fully vaccinated)
+                     method = "xlogit",# Log transformation of mean
                      wide = FALSE,     # Long format better for a lot of strata
                      deff = TRUE,      # Include the design effect in the output
                      pretty = FALSE) %>% # Do not merge VCE and 95% CI yet
@@ -1340,6 +1342,7 @@ table451b <- vaccine %>%
   sitrep::tab_survey(vacful,           # The variable to calculate proportions on
                      strata = NULL,    # Weighted sampling has no strata
                      keep = c(1),      # The value of interest (fully vaccinated)
+                     method = "xlogit",# Log transformation of the mean
                      wide = FALSE,     # Long format better for a lot of strata
                      deff = TRUE,      # Include the design effect in the output
                      method = "xlogit",  # Use CDC SUDAAN method
@@ -1385,6 +1388,7 @@ table451b <- vaccine %>%
   sitrep::tab_survey(vacful,           # The variable to calculate proportions on
                      strata = NULL,    # Weighted sampling has no strata
                      keep = c(1),      # The value of interest (fully vaccinated)
+                     method = "xlogit",# Log transformation of the mean
                      wide = FALSE,     # Long format better for a lot of strata
                      deff = TRUE,      # Include the design effect in the output
                      method = "xlogit",  # Use CDC SUDAAN method
@@ -1439,6 +1443,7 @@ table451b <- vaccine %>%
   sitrep::tab_survey(vacful,           # The variable to calculate proportions on
                      strata = NULL,    # To get the total we will leave this NULL
                      keep = c(1),      # The value of interest (fully vaccinated)
+                     method = "xlogit",# Log transformation of the mean
                      wide = FALSE,     # Long format better for a lot of strata
                      deff = TRUE,      # Include the design effect in the output
                      method = "xlogit",  # Use CDC SUDAAN method
@@ -1568,6 +1573,7 @@ intervals and the design effect for:
 
 We will then combine the results in a single table as for the previous
 section.
+
 Because most of this code is repetitive we will use the `map()` function from the 
 `purrr` package to iterate (repeat) code for each of this variables. This may 
 seem scary at first, but try to remember that we are just using the functions 
@@ -1609,6 +1615,7 @@ from the `sitrep` package directly.
 #############################################
 # Estimate VC for DTP3 by minority and urban:
 #############################################
+
 
 restab1 <- purrr::map(
   # for each of the variables listed
