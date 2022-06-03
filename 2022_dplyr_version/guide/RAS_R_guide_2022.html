@@ -3245,6 +3245,289 @@ restabpub &lt;- restabpub %&gt;%
   flextable::align(j = 5:6, align = &quot;right&quot;, part = &quot;all&quot;)</code></pre>
 </div>
 </div>
+<div id="session-5" class="section level2">
+<h2>Session 5</h2>
+<p>In this session you will be working with a new data set, which
+combines the previous data with questionnaire responses from the parents
+of children recruited to the study. The questionnaire explored parental
+beliefs about vaccination, and the researchers are interested in finding
+out if there is any correlation between parental beliefs and the
+vaccination status of their child.</p>
+<p>In the first few tasks, you will create descriptive summaries of the
+different parental characteristics.</p>
+<p>In subsequent tasks you will then perform some analysis to determine
+which parental characteristics have a statistically significant
+association having a fully vaccinated child.</p>
+<p>In the last part of this session, you will complete your analysis to
+include some multivariate modelling.</p>
+<p>As before, please refer to the following appendices for the data
+dictionary:</p>
+<ul>
+<li><p>Annex 5: <code>school</code> data set (contains basic demographic
+variables on recruited children)</p></li>
+<li><p>Annex 6: <code>vaccine</code> data set (contains the vaccine
+records of recruited children)</p></li>
+<li><p>Annex 7: <code>quest</code> data set (encoded, scaled answers to
+the parental questionnaire on vaccine beliefs)</p></li>
+</ul>
+<div id="task-5.1---vaccination-coverage-by-parental-characteristics" class="section level3">
+<h3>Task 5.1 - vaccination coverage by parental characteristics</h3>
+<p><strong>Background:</strong></p>
+<p>In this task you will be completing the blank fields (highlighted in
+yellow) in <code>table 5.1</code> presented in the main case study
+guide. To do this, you will need to estimate proportions in the
+population (numerically and as a percentage, including 95% confidence
+intervals), allowing for weights, stratification and clustering as
+before. This time you will look at some parental characteristics listed
+in table 5.1.</p>
+<p><strong>Task description:</strong></p>
+<p>Using the data set <code>vaccine5.dta</code> you will:</p>
+<ol style="list-style-type: decimal">
+<li><p>Create an agegroup variable for mother’s age (<code>mage</code> )
+as follows: (&lt;25, 25-29, &gt;=30 years)</p></li>
+<li><p>Create categories for number of other siblings in the family
+(<code>osib1</code> ) : (&gt;=3, 1-2, 0)</p></li>
+<li><p>Create appropriate labels for the recoded variables</p></li>
+<li><p>Estimate the proportions for each of the parental characteristics
+listed in table 5.1, using a survey design that takes into account the
+weights, clustering and strata that were used during the
+sampling.</p></li>
+</ol>
+<p>The parental characteristics to estimate proportions for from table
+5.1 are as follows:</p>
+<table>
+<caption>Table 5.1 parental characteristics to estimate proportions
+for</caption>
+<colgroup>
+<col width="29%" />
+<col width="23%" />
+<col width="47%" />
+</colgroup>
+<thead>
+<tr class="header">
+<th>Variable description</th>
+<th>Variable name</th>
+<th>Comments</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>Minority group</td>
+<td><code>minority</code></td>
+<td>Convert to factor and add factor level labels</td>
+</tr>
+<tr class="even">
+<td>Mother’s age at childbirth</td>
+<td><code>mage</code></td>
+<td>Create age groups: &lt;25, 25-29, &gt;=30</td>
+</tr>
+<tr class="odd">
+<td>Number of other siblings</td>
+<td><code>osib1</code></td>
+<td>Divide into categories: &gt;=3, 1-2, 0</td>
+</tr>
+</tbody>
+</table>
+<p><strong>R coding tips:</strong></p>
+<p>As a first step, we will import the data <code>vaccine5.dta</code>
+which you can find in the <code>data</code> folder, as before.</p>
+<p>We will then create new variables for mother’s age group and
+categories for the number of siblings, as shown above, using
+<code>dplyr::case_when()</code> to assign the categories. We will also
+convert the <code>minority</code> variable to a labelled factor, as we
+did in task 4.1.</p>
+<p>We will then create the survey design, including weights, clustering
+and strata, with the <code>srvyr</code> package, as before. You will
+need the following variables to do this:</p>
+<ul>
+<li><p><code>weight</code> : contains sampling weights as calculated
+earlier in the case study;</p></li>
+<li><p><code>strata</code> : contains the 11 strata (urban and rural
+areas within the 6 regions);</p></li>
+<li><p><code>school</code> : contains the cluster ID for each school
+class that was included in the study.</p></li>
+</ul>
+<p><em>A - Data import and preparation</em></p>
+<p>Here we will convert <code>minority</code> to a labelled factor,
+using the base R function <code>factor()</code> .</p>
+<p>Then we will use <code>dplyr::case_when()</code> to create
+categorical variables for age group and number of siblings,
+respectively, from the numeric columns <code>mage</code> and
+<code>osib1</code>.</p>
+<p>Finally we will convert the two new categorical variables to an
+ordered factor, by using the <code>forcats::fct_relevel()</code>
+function. You can check that the factor levels are in the correct order
+with <code>levels()</code> .</p>
+<pre class="r"><code>##############################
+# DATA CLEANING AND RECODING
+#############################
+
+# Import vaccine5.dta:
+vaccine &lt;- rio::import(here::here(&quot;data&quot;, &quot;vaccine5.dta&quot;))  %&gt;% 
+  
+  # Convert minority to a labelled factor:
+  mutate(minority = factor(minority, 
+                           levels = c(0, 1, 2, 3),
+                           labels = c(&quot;General population&quot;, 
+                                      &quot;Roma&quot;, 
+                                      &quot;Greek Muslims&quot;, 
+                                      &quot;Immigrants&quot;))) %&gt;% 
+ 
+  # Create new variable containing mother&#39;s age group:
+  mutate(magegroup = case_when(
+    
+    # Logical criteria      Label 
+    mage &lt; 25               ~ &quot;Under 25&quot;, 
+    between(mage, 25, 29)   ~ &quot;25 - 29&quot;,
+    mage &gt;= 30              ~ &quot;30 or over&quot;)) %&gt;% 
+  
+  # Convert to a factor and put the agegroups in ascending order:
+  mutate(magegroup = fct_relevel(magegroup, 
+                                 &quot;Under 25&quot;, 
+                                 &quot;25 - 29&quot;, 
+                                 &quot;30 or over&quot;)) %&gt;% 
+  
+  # Create new variable containing categories for number of siblings:
+  mutate(nsibcat = case_when(
+    
+    # Logical criteria      Label
+    osib1 &gt;= 3              ~ &quot;3 or more&quot;,
+    between(osib1, 1, 2)    ~ &quot;1 - 2&quot;, 
+    osib1 == 0              ~ &quot;No siblings&quot;)) %&gt;% 
+  
+  # Convert to a factor and put the categories in descending order:
+  mutate(nsibcat = fct_relevel(nsibcat, 
+                               &quot;3 or more&quot;, 
+                               &quot;1 - 2&quot;, 
+                               &quot;No siblings&quot;)) </code></pre>
+<p><em>B - Survey design</em></p>
+<p>In this code chunk, we will create the survey design from the data
+set, using <code>srvyr::as_survey_design()</code> as before.</p>
+<pre class="r"><code>vce_design &lt;- vaccine %&gt;% 
+  
+  # Create survey design:
+  srvyr::as_survey_design(ids = school,      # This is the cluster variable
+                          weights = weight,  # These are the sample weights
+                          strata = strata)   # These are the 11 strata</code></pre>
+<p><em>C - Estimate stratified proportions:</em></p>
+<p>Here we will calculate estimated proportions of each factor level in
+minority group, mother’s age group and number of siblings (in
+categories), taking into account the survey design. We will use the
+<code>sitrep::tab_survey()</code> function to estimate the proportions,
+and <code>purrr::map()</code> to loop through the three variables of
+interest, <code>minority</code> , <code>magegroup</code> and
+<code>nsibcat</code> .</p>
+<p><em>Notes:</em></p>
+<ol style="list-style-type: decimal">
+<li><p>Estimated proportions may be bigger or smaller than the actual
+proportions in the sample, because the survey design is used to estimate
+what the proportions in the population at large are likely to
+be.</p></li>
+<li><p>In the <code>sitrep::tab_survey()</code> function we will set the
+argument <code>keep</code> to <code>TRUE</code> , since this time we
+want to calculate relative proportions for all of the factor levels in
+each variable. This is in contrast to when we were calculating vaccine
+coverage in the previous section; where we set <code>keep = c(1)</code>
+to indicate that we only wanted to calculate the proportion of
+vaccinated individuals (in all the vaccine variables, vaccinated = 1,
+not vaccinated = 0).</p></li>
+</ol>
+<pre class="r"><code># Create a list of variables:
+varlist &lt;- c(&quot;minority&quot;, 
+             &quot;magegroup&quot;, 
+             &quot;nsibcat&quot;)
+
+# Loop over the variables:
+restab1 &lt;- purrr::map(
+  
+  # For each of the variables listed:
+  .x = varlist, 
+  
+  # Run the following function 
+  # (replacing x with each variable one-by-one)
+  .f = function(x) {
+    
+    # Apply the study design:
+    vce_design %&gt;% 
+      
+      # purrr replaces x with each of the variables listed
+      # x is in curly brackets so it is interpreted as a 
+      # variable name instead of a character
+      sitrep::tab_survey({x},           
+                         strata = NULL,  
+                         keep = TRUE,
+                         na.rm = TRUE,
+                         method = &quot;xlogit&quot;,
+                         wide = FALSE,     
+                         deff = TRUE,      
+                         pretty = FALSE) 
+  }
+
+) %&gt;% 
+  bind_rows()</code></pre>
+<p><em>D - create summary table of results</em></p>
+<p>In this code chunk, we will use <code>flextable</code> as before, to
+create a publishable summary of the results.</p>
+<pre class="r"><code># Create publishable table of results:
+restabpub &lt;- restab1 %&gt;% 
+  
+  # Now we can convert the estimates and 95% CI to percentages:
+  mutate(across(contains(&quot;proportion&quot;), ~ percent(.x, accuracy = 0.01))) %&gt;%
+  
+  # And finally we can trim the decimal places for other columns:
+  mutate(across(c(n, deff), ~ round(.x, digits = 2))) %&gt;% 
+  
+  # Create merged column for 95% CIs: 
+  tidyr::unite(col = &quot;CI95&quot;, 
+               proportion_low, proportion_upp, 
+               sep = &quot; - &quot;, 
+               remove = TRUE) %&gt;% 
+  
+  # Add nice names for stratifier variables to the table:
+  mutate(variable = case_when(
+    variable == &quot;minority&quot;   ~ &quot;Minority group&quot;, 
+    variable == &quot;magegroup&quot;  ~ &quot;Mother&#39;s age at childbirth&quot;,
+    variable == &quot;nsibcat&quot;    ~ &quot;Number of other siblings&quot;)) %&gt;% 
+  
+  # Select the columns to print:
+  dplyr::select(variable,
+                value,
+                deff, 
+                n, 
+                proportion, 
+                CI95) %&gt;% 
+  
+  # Lastly we can convert it to a flextable for printing:
+  flextable::flextable() %&gt;% 
+  
+  # Merge cells in the stratifier colum as the values are repeated:
+  flextable::merge_v(j = &quot;variable&quot;, target = &quot;variable&quot;) %&gt;% 
+  
+  # Add nice theme:
+  flextable::theme_booktabs(bold_header = TRUE) %&gt;% 
+
+  # Add labels:
+  flextable::set_header_labels(values = list(variable = &quot;Stratifier&quot;,
+                                             value = &quot;Stratum&quot;,
+                                             deff = &quot;Design effect&quot;,
+                                             n = &quot;VCE (n)&quot;, 
+                                             proportion = &quot;VCE (%)&quot;, 
+                                             CI95 = &quot;95% CI&quot;)) %&gt;% 
+  
+  # Adjust column widths to fit text:
+  flextable::set_table_properties(layout = &quot;autofit&quot;) %&gt;% 
+  
+  # Right-align last 2 columns (weighted VCE and 95% CI):
+  flextable::align(j = 5:6, align = &quot;right&quot;, part = &quot;all&quot;) %&gt;% 
+
+  # Add borders under the merged cells:
+  flextable::border_inner_h(border = fp_border(
+    color = &quot;black&quot;, 
+    style = &quot;solid&quot;, 
+    width = 1), 
+    part = &quot;body&quot;)</code></pre>
+</div>
+</div>
 </div>
 <div class="footnotes footnotes-end-of-document">
 <hr />
