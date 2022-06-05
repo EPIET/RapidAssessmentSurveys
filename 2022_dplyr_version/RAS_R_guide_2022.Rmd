@@ -166,6 +166,7 @@ pacman::p_load(
   sampler,     # Calculate sample size
   srvyr,       # Create survey design and calculate vaccination coverage
   survey,      # Support for srvyr functions
+  glmmML,      # Poisson and regression mixed effects models with clustering
   Hmisc        # Summary functions
 )
 
@@ -1915,7 +1916,7 @@ The parental characteristics to estimate proportions for from table 5.1
 are as follows:
 
 | Variable description       | Variable name | Comments                                      |
-|---------------------|-----------------|----------------------------------|
+|---------------------|------------------|---------------------------------|
 | Minority group             | `minority`    | Convert to factor and add factor level labels |
 | Mother's age at childbirth | `mage`        | Create age groups: \<25, 25-29, \>=30         |
 | Number of other siblings   | `osib1`       | Divide into categories: \>=3, 1-2, 0          |
@@ -2150,3 +2151,195 @@ restabpub <- restab1 %>%
     part = "body")
   
 ```
+
+### Task 5.2 - Bivariate statistics and crude associations with vaccination
+
+**Background:**
+
+In this task, you will continue with analysis of parental
+characteristics and attitudes towards vaccination and look at the
+associations between these factors and vaccination coverage. The
+objective is to complete table 5.2 in the main case study guide. This
+includes calculation of bivariate statistics (vaccine coverage
+stratified by different parental characteristics and attitudes) as well
+as crude prevalence ratios. If you have time, you can also perform
+univariate analysis and calculate crude odds ratios.
+
+**Task description:**
+
+1.  Tabulate bivariate statistics (create a 2x2 table) to describe
+    parental characteristics, parental beliefs/attitudes about
+    immunization and perceived barriers to vaccination in relation to
+    the binary outcome of having a fully vaccinated child (`vacful`) or
+    not. Use the same survey design as for previous sections, taking
+    into account weights (`weight`), clustering (`school`) and strata
+    (`strata`).
+
+2.  Calculate crude measures of association, with corresponding 95%
+    confidence intervals, between the above factors and having a fully
+    vaccinated child (using `vacful` as the study outcome). Use a
+    Poisson regression mixed effects model with robust error variance to
+    calculate prevalence ratios, taking clustering into account by
+    including the `school` variable as a random effect.
+
+3.  If you have time, complete the optional exercise and calculate crude
+    odds ratios, using `vacful` as the outcome measure and the factors
+    listed in table 5.2 as explanatory variables. As with prevalence
+    ratios, include `school` as a random effect. Note that odds ratios
+    overestimate the risk ratio when an outcome is common, or above
+    approximately 10% prevalence. For this reason, odds ratios may not
+    be an appropriate measure of association for many of the explanatory
+    variables in this data set.
+
+For convenience, the explanatory variables to analyse are listed in the
+table below. Note that some will require labeling to make the output
+more human readable.
+
+| Description                                | Variable     | Comments                     |
+|------------------------------|---------------------|---------------------|
+| Minority group                             | `minority`   | Already a labeled factor     |
+| Mother's age at childbirth                 | `magegroup`  | Reverse order of levels      |
+| Father's education                         | `educf`      | Requires labeling (category) |
+| Number of siblings                         | `nsibcat`    | Already a labeled factor     |
+| Balanced positive opinion on vaccination   | `a1posyn`    | Requires labeling (binary)   |
+| Balanced positive opinion on vaccination   | `a1posg`     | Requires labeling (category) |
+| Uncritical positive opinion on vaccination | `uncritical` | Requires labeling (binary)   |
+| Vaccination is necessary for my child      | `a1x1g`      | Requires labeling (binary)   |
+| Vaccines may harm my child                 | `a1x2g`      | Requires labeling (binary)   |
+| Natural disease preferable to vaccines     | `a1x5g`      | Requires labeling (binary)   |
+| Long distance to immunization site         | `a3x1g`      | Requires labeling (binary)   |
+| Inconvenient opening hours                 | `a3x2g`      | Requires labeling (binary)   |
+| Cost of vaccines                           | `a3x5g`      | Requires labeling (binary)   |
+
+**R coding tips:**
+
+You will first need to convert all the explanatory variables to labelled
+factors. A few of these have already been converted to factors in the
+previous section; to quickly deal with the remainder, we can use
+`purrr::map()` to loop through the list of binary (0,1) variables and
+label them as (no, yes).
+
+Next, you can calculate the summary counts *N* for each explanatory
+variable, by cross-tabulating `vacful` with the variable of interest
+using the `janitor::tabyl()` function.
+
+You can then calculate full vaccine coverage for each explanatory
+variable by looping through them with `purrr::map()` and using
+`sitrep::tab_survey()` as before. You can use the survey design that was
+created in the previous task (`vce_design`).
+
+The Poisson model can be created using the `glmmML::glmmML()` function,
+which creates generalized linear mixed effects Poisson (or binomial)
+regression models, with clustering. You will need to specify the
+following arguments:
+
+-   *formula* in the format `outcome ~ dependent` variable (e.g.
+    `vacful ~ minority`)
+
+-   *family*: select the type of model to run, e.g. `poisson`
+
+-    *data*: name the data set, e.g. `vaccine`
+
+-   *cluster*: name the clustering variable, e.g. `school`
+
+To obtain prevalence ratios and 95% confidence intervals from the model
+results, we will apply the following formulas to the model output:
+
+1.  $PR = exp(coeff)$ will calculate the prevalence ratios;
+
+2.  $CI = (coeff + / - 1.96 \times se)$ to calculate 95% confidence
+    intervals, where:
+
+-   $PR$ = Prevalence ratio
+
+-   $CI$ = Confidence intervals
+
+-   $exp$ = exponentiate
+
+-   $coeff$ = coefficient
+
+-   $se$ = standard error
+
+-   $1.96 = \frac {1} {CI}$
+
+Finally, if you have time to complete the optional exercise, you can
+repeat the `glmmML::glmmML()` model with the same parameters, but this
+time using `family = binomial` .
+
+*A - preparing the data:*
+
+First, we will convert the variables to labelled, ordered factors, with
+the first level of each factor representing the baseline (intercept)
+with which we will compare the other levels. For binary variables, this
+will be `0 = no` . For the non-binary categorical variables, this will
+normally be the smallest numeric category, e.g. `no siblings` for number
+of siblings, or the most general category, e.g. `General population` for
+minority group.
+
+```{r s52_prep_data}
+
+# Call up the data set:
+vaccine <- vaccine %>% 
+  
+  # Reverse the factor level order of nsibcat so it starts with "no siblings":
+  mutate(nsibcat = fct_relevel(nsibcat, "No siblings", "1 - 2", "3 or more")) %>% 
+  
+  # Create a labeled factor from educf for father's education:
+  mutate(educf = factor(educf, 
+                           levels = c(2, 3, 4, 6),
+                           labels = c("< 9 years (grammar school)", 
+                                      "9 - 11 years (high school)", 
+                                      "12 years (college)", 
+                                      "> 12 years (university)"))) %>% 
+  
+  # Create a labelled factor from a1posg (balanced positive opinion, categories):
+  mutate(a1posg = factor(a1posg, 
+                         levels = c(0, 1, 2), 
+                         labels = c("No positive opinion", 
+                                    "Moderate positive opinion", 
+                                    "High positive opinion")))
+
+# Now we can create a list of binary variables (no / yes) to label:
+binary_vars <- c("a1posyn",
+                 "uncritical", 
+                 "a1x1g", 
+                 "a1x2g", 
+                 "a1x5g", 
+                 "a3x1g", 
+                 "a3x2g", 
+                 "a3x5g")
+
+# Create a list of all variables to analyse:
+allvars <- c("minority", 
+             "magegroup", 
+             "educf",
+             "nsibcat", 
+             "a1posg", 
+             binary_vars)
+
+# Next, we can use mutate(across()) to convert them to labelled factors:
+vaccine <- vaccine %>%  
+  
+  # Mutate across:
+  mutate(across(
+    .cols = all_of(c(binary_vars)),   # Columns in the list binary_vars
+    .fns = ~factor(.x,                   # Convert to a factor           
+      levels = c(0, 1),             # Stipulate levels from existing values
+      labels = c("no", "yes"))))    # Label levels as no and yes
+
+```
+
+
+*B - Counts of full vaccinated children:*
+
+In this section we will create a table of counts for vaccinated children by each of the variables listed in `allvars`:
+
+```{r s52_counts}
+
+counts <- vaccine %>% 
+  #### Needs work
+  # Add all variables sequentially to the table:
+  janitor::tabyl(c(allvars), vacful)
+
+```
+
