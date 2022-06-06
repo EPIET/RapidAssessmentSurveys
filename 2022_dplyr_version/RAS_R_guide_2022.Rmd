@@ -1870,7 +1870,7 @@ which parental characteristics have a statistically significant
 association having a fully vaccinated child.
 
 In the last part of this session, you will complete your analysis to
-include some multivariate modelling.
+include some multivariable modelling.
 
 As before, please refer to the following appendices for the data
 dictionary:
@@ -1899,7 +1899,7 @@ you will look at some parental characteristics listed in table 5.1.
 
 Using the data set `vaccine5.dta` you will:
 
-1.  Create an agegroup variable for mother's age (`mage` ) as follows:
+1.  Create an age group variable for mother's age (`mage` ) as follows:
     (\<25, 25-29, \>=30 years)
 
 2.  Create categories for number of other siblings in the family
@@ -2192,31 +2192,31 @@ univariate analysis and calculate crude odds ratios.
     variables in this data set.
 
 For convenience, the explanatory variables to analyse are listed in the
-table below. Note that some will require labeling to make the output
+table below. Note that some will require labelling to make the output
 more human readable.
 
 | Description                                | Variable     | Comments                     |
 |------------------------------|---------------------|---------------------|
-| Minority group                             | `minority`   | Already a labeled factor     |
+| Minority group                             | `minority`   | Already a labelled factor     |
 | Mother's age at childbirth                 | `magegroup`  | Reverse order of levels      |
-| Father's education                         | `educf`      | Requires labeling (category) |
-| Number of siblings                         | `nsibcat`    | Already a labeled factor     |
-| Balanced positive opinion on vaccination   | `a1posyn`    | Requires labeling (binary)   |
-| Balanced positive opinion on vaccination   | `a1posg`     | Requires labeling (category) |
-| Uncritical positive opinion on vaccination | `uncritical` | Requires labeling (binary)   |
-| Vaccination is necessary for my child      | `a1x1g`      | Requires labeling (binary)   |
-| Vaccines may harm my child                 | `a1x2g`      | Requires labeling (binary)   |
-| Natural disease preferable to vaccines     | `a1x5g`      | Requires labeling (binary)   |
-| Long distance to immunization site         | `a3x1g`      | Requires labeling (binary)   |
-| Inconvenient opening hours                 | `a3x2g`      | Requires labeling (binary)   |
-| Cost of vaccines                           | `a3x5g`      | Requires labeling (binary)   |
+| Father's education                         | `educf`      | Requires labelling (category) |
+| Number of siblings                         | `nsibcat`    | Already a labelled factor     |
+| Balanced positive opinion on vaccination   | `a1posyn`    | Requires labelling (binary)   |
+| Balanced positive opinion on vaccination   | `a1posg`     | Requires labelling (category) |
+| Uncritical positive opinion on vaccination | `uncritical` | Requires labelling (binary)   |
+| Vaccination is necessary for my child      | `a1x1g`      | Requires labelling (binary)   |
+| Vaccines may harm my child                 | `a1x2g`      | Requires labelling (binary)   |
+| Natural disease preferable to vaccines     | `a1x5g`      | Requires labelling (binary)   |
+| Long distance to immunization site         | `a3x1g`      | Requires labelling (binary)   |
+| Inconvenient opening hours                 | `a3x2g`      | Requires labelling (binary)   |
+| Cost of vaccines                           | `a3x5g`      | Requires labelling (binary)   |
 
 **R coding tips:**
 
 You will first need to convert all the explanatory variables to labelled
 factors. A few of these have already been converted to factors in the
 previous section; to quickly deal with the remainder, we can use
-`purrr::map()` to loop through the list of binary (0,1) variables and
+`dplyr::across()` to loop through the list of binary (0,1) variables and
 label them as (no, yes).
 
 Next, you can calculate the summary counts *N* for each explanatory
@@ -2292,7 +2292,7 @@ vaccine <- vaccine %>%
   # Reverse the factor level order of nsibcat so it starts with "no siblings":
   mutate(nsibcat = fct_relevel(nsibcat, "No siblings", "1 - 2", "3 or more")) %>% 
   
-  # Create a labeled factor from educf for father's education:
+  # Create a labelled factor from educf for father's education:
   mutate(educf = factor(educf, 
                            levels = c(2, 3, 4, 6),
                            labels = c("Grammar school (< 9 years)", 
@@ -2326,7 +2326,7 @@ vaccine <- vaccine %>%
   
   # Mutate across:
   mutate(across(
-    .cols = all_of(c(binary_vars)),   # Columns in the list binary_vars
+    .cols = all_of(binary_vars),   # Columns in the list binary_vars
     .fns = ~factor(.x,                   # Convert to a factor           
       levels = c(0, 1),             # Stipulate levels from existing values
       labels = c("no", "yes"))))    # Label levels as no and yes
@@ -2362,7 +2362,7 @@ allvars <- c("minority",
 allvars <- purrr::set_names(allvars)
 
 
-# Create a liste of nice labels for allvars:
+# Create a list of nice labels for allvars:
 allvarlabs <- c("Minority group", 
                 "Mother's age at childbirth", 
                 "Father's education",
@@ -2377,20 +2377,18 @@ allvarlabs <- c("Minority group",
                 "Inconvenient opening hours",
                 "Cost of vaccines")
 
+# Add the names of original variables to use in recoding 
+allvarlabs <- purrr::set_names(allvarlabs, allvars)
+
 
 ```
 
 *B - Counts of fully vaccinated children:*
 
 In this section we will create a table of counts for vaccinated children
-by each of the variables listed in `allvars`. We can use the `dplyr`
-functions `pivot_longer()` and `count` to generate the counts for each
+by each of the variables listed in `allvars`. We can use the `sitrep`
+functions `tab_linelist()` to generate the counts for each
 factor level in each variable from `allvars`.
-
-We can then use `arrange` and `factor` to reorder the rows so that they
-match the order of questions and responses in table 5.2. Note that for
-each variable that is being summarized by `count()`, the factor levels
-are already preserved.
 
 Finally we will add a new column to the beginning of the table, to hold
 human readable question labels that will make the final results table
@@ -2405,47 +2403,24 @@ restab52 <- vaccine %>%
   
   # Filter for those that are fully vaccinated only:
   dplyr::filter(vacful == 1) %>% 
-  
+
   # Create summary table:
-  tidyr::pivot_longer(cols = allvars,
-                      names_to = "variable",
-                      values_to = "response",
-                      values_drop_na = TRUE) %>%
+  tab_linelist(allvars) %>% 
   
-  # Add counts to the summary by variable and factor level:
-  count(variable, response) %>% 
+  # drop unweighted proportions variable 
+  select(-proportion) %>% 
   
-  
-  # Now update order of the question groups to match table 5.2:
-  dplyr::arrange(factor(x = variable, 
-                        levels = allvars)) %>% 
-  
-  # Now create a new variable to hold the question labels:
-  mutate(question = case_when(
-    
-    variable == "minority"    ~ "Minority group", 
-    variable == "magegroup"   ~ "Mother's age at childbirth", 
-    variable == "educf"       ~ "Father's education", 
-    variable == "nsibcat"     ~ "Number of siblings", 
-    variable == "a1posg"      ~ "Balanced positive opinion on vaccination", 
-    variable == "a1posyn"     ~ "Balanced positive opinion on vaccination", 
-    variable == "uncritical"  ~ "Uncritical positive opinion on vaccination", 
-    variable == "a1x1g"       ~ "Vaccination is necessary for my child", 
-    variable == "a1x2g"       ~ "Vaccines may harm my child", 
-    variable == "a1x5g"       ~ "Natural disease preferable to vaccines", 
-    variable == "a3x1g"       ~ "Long distance to immunization site", 
-    variable == "a3x2g"       ~ "Inconvenient opening hours", 
-    variable == "a3x5g"       ~ "Cost of vaccines"
-    
-    )) %>% 
+  # we can use our names vector of labels to recode the variable column
+  # note the three exclamation marks (!) are scary advanced programming 
+      # see the recode help file - but generally: just accept that it works
+  mutate(variable = recode(variable, !!!allvarlabs)) %>% 
   
   # Reorder columns so question labels come first:
   dplyr::relocate(question, .before = variable)
   
 ```
 
-*C - Vaccination coverage stratified by parental characteristics and
-beliefs:*
+*C - Vaccination coverage stratified by parental characteristics and beliefs:*
 
 Here we will repeat the same procedure as demonstrated in previous
 sections to estimate full vaccination coverage (`vacful`) taking into
@@ -2464,12 +2439,12 @@ section, using `bind_cols()` .
 restab_vce <- purrr::map(
   
   # allvars is the list of variables to loop through that we already created:
-  .x = c(allvars), 
+  .x = allvars, 
   .f = function(x) {
     
     vce_design %>% 
       sitrep::tab_survey(vacful,        # VCE will be calculated for vacful
-                         strata = {x},  # each variable in allvars is a stratum
+                         strata = all_of({x}),  # each variable in allvars is a stratum
                          keep = c(1),   # we are only interested in vacful == 1
                          na.rm = TRUE,
                          method = "xlogit",
@@ -2481,7 +2456,10 @@ restab_vce <- purrr::map(
       rename(stratum = x) %>%
       
       # Remove row with missing values:
-      filter(!is.na(stratum))
+      filter(!is.na(stratum)) %>% 
+      
+      # Add in the current variable name to make merging more accurate 
+      mutate(variable = x)
   }
 
   ) %>% 
@@ -2509,7 +2487,8 @@ restab_vce <- purrr::map(
                remove = TRUE) %>%                # Remove old columns
   
   # Select the columns to merge:
-  dplyr::select(stratum,                         # stratum = response in restab52
+  dplyr::select(variable,                        # variable name from allvars
+                value = stratum,                 # rename stratum to value (to match restab52)
                 deff,                            # Design effect for reference
                 n,                               # Estimated count for reference
                 proportion,                      # VCE (%) to add to table
@@ -2529,11 +2508,14 @@ restab52 <- restab52 %>%
   left_join(y = dplyr::select(.data = restab_vce,
 
                               # Columns from restab_vce to add to restab52:
-                              stratum,
+                              variable, 
+                              value,
                               proportion),
 
-            # Indicate ID columns to join by:
-            by = c("response" = "stratum")) %>%
+            # Indicate ID columns to join by 
+            # (using both variable and value is safer
+            # as yes/no could be falsely allocated):
+            by = c("variable", "value")) %>%
 
   # Add brackets around vaccine coverage estimate proportion:
   mutate(proportion = paste0("(", proportion, ")")) %>%
@@ -2546,8 +2528,7 @@ restab52 <- restab52 %>%
   
 ```
 
-*D - Crude prevalence ratios for vaccination in association with
-parental characteristics and beliefs:*
+*D - Crude prevalence ratios for vaccination in association with parental characteristics and beliefs:*
 
 In this section you will create and run a Poisson regression model, tidy
 up the results, put them in a table and loop the variables in `allvar`
@@ -2565,7 +2546,9 @@ as referencing columns in a data set, e.g. `mymodel$coefficients` ,
 where `mymodel` is the name you have given to store the model output.
 These need to be exponentiated to give the prevalence ratios. In
 addition, you will also need to extract the standard errors, which are
-stored in `coef.sd`
+stored in `coef.sd`. While there are helper functions (in the `broom`
+package) that would do this heavy lifting for you with a standard `glm()`, 
+this does not yet exist for `glmmML()` so we need to do it ourselves. 
 
 Note that a robust variance estimate is already made with the methods
 used in the `glmmML` package, so it does not need to be specified.
@@ -2611,7 +2594,7 @@ lci95 <- exp(pmodel1$coefficients - 1.96 * pmodel1$coef.sd)
 uci95 <- exp(pmodel1$coefficients + 1.96 * pmodel1$coef.sd)
 
 # To tabulate results:
-poisondf <- tibble(response = names(pmodel1$coefficients), # extract names too
+poisondf <- tibble(value = names(pmodel1$coefficients), # extract names too
                    pr = exp(pmodel1$coefficients), 
                    lci95 = exp(pmodel1$coefficients - 1.96 * pmodel1$coef.sd), 
                    uci95 = exp(pmodel1$coefficients + 1.96 * pmodel1$coef.sd))
@@ -2654,9 +2637,9 @@ poison_tabulator <- function(predictor) {
     # Filter out the intercepts:
     filter(varids != "(Intercept)") %>% 
     
-    # Separate variable name and response label into 2 columns:
+    # Separate variable name and value label into 2 columns:
     tidyr::separate(col = varids, 
-                    into = c("variable", "response"), 
+                    into = c("variable", "value"), 
                     sep = predictor) %>% 
     
     # Fill variable column with the name of the variable that was modelled:
@@ -2696,26 +2679,29 @@ restab_pois <- allvars %>%
 
 Note that we removed the intercepts - in table 5.2, these have been
 encoded as 1. We can now merge these results with the table containing
-counts and vaccine coverage, using the `response` variable. We can then
+counts and vaccine coverage, using the `variable` and `value` variables. We can then
 add a 1 for the blanks, and convert the table to a `flextable` for
 printing.
 
 ```{r s52_combined_results_table}
 
-# Merge the two tables with a left join on response:
+# Merge the two tables with a left join on variable and value:
 restab52 <- restab52 %>% 
   
   # Join the counts / vaccine coverage table to the poisson table on response:
   left_join(y = dplyr::select(.data = restab_pois,
 
                               # Columns to include:
-                              response,
+                              variable, 
+                              value,
                               pr, 
                               lci95, 
                               uci95),
 
-            # Indicate ID columns to join by:
-            by = c("response" = "response")) %>%
+            # Indicate ID columns to join by 
+            # (using both variable and value is safer
+            # as yes/no could be falsely allocated):
+            by = c("variable", "value")) %>%
 
   # Combine PR and 95% CI:
   mutate(pr95 = paste0(pr, 
@@ -2728,8 +2714,16 @@ restab52 <- restab52 %>%
   # Select columns to drop for the final table:
   select(-c(pr, lci95, uci95)) %>% 
   
-  # Encode intercepts as 1:
-  mutate(pr95 = case_when(pr95 == "NA (NA - NA)" ~ "1")) %>% 
+  # Encode intercepts (those with missing estimates) as "ref", 
+  # leave all other rows unchanged:
+  mutate(pr95 = case_when(
+    pr95 == "NA (NA - NA)" ~ "ref", 
+    TRUE                   ~ pr95
+    )) %>% 
+  
+  # replace repeating row values(in variable names) with an empty string 
+  # (this is so that they don't show up in the final table) 
+  mutate(across(c(question, variable), ~replace(.x, duplicated(.x), ""))) %>% 
   
   # Lastly we can convert it to a flextable for printing:
   flextable::flextable() %>% 
