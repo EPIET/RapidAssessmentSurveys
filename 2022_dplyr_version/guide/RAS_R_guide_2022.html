@@ -1734,6 +1734,7 @@ pacman::p_load(
   sampler,     # Calculate sample size
   srvyr,       # Create survey design and calculate vaccination coverage
   survey,      # Support for srvyr functions
+  glmmML,      # Poisson and regression mixed effects models with clustering
   Hmisc        # Summary functions
 )
 
@@ -3300,8 +3301,8 @@ sampling.</p></li>
 for</caption>
 <colgroup>
 <col width="29%" />
-<col width="23%" />
-<col width="47%" />
+<col width="25%" />
+<col width="45%" />
 </colgroup>
 <thead>
 <tr class="header">
@@ -3526,6 +3527,618 @@ restabpub &lt;- restab1 %&gt;%
     style = &quot;solid&quot;, 
     width = 1), 
     part = &quot;body&quot;)</code></pre>
+</div>
+<div id="task-5.2---bivariate-statistics-and-crude-associations-with-vaccination" class="section level3">
+<h3>Task 5.2 - Bivariate statistics and crude associations with
+vaccination</h3>
+<p><strong>Background:</strong></p>
+<p>In this task, you will continue with analysis of parental
+characteristics and attitudes towards vaccination and look at the
+associations between these factors and vaccination coverage. The
+objective is to complete table 5.2 in the main case study guide. This
+includes calculation of bivariate statistics (vaccine coverage
+stratified by different parental characteristics and attitudes) as well
+as crude prevalence ratios. If you have time, you can also perform
+univariate analysis and calculate crude odds ratios.</p>
+<p><strong>Task description:</strong></p>
+<ol style="list-style-type: decimal">
+<li><p>Tabulate bivariate statistics (create a 2x2 table) to describe
+parental characteristics, parental beliefs/attitudes about immunization
+and perceived barriers to vaccination in relation to the binary outcome
+of having a fully vaccinated child (<code>vacful</code>) or not. Use the
+same survey design as for previous sections, taking into account weights
+(<code>weight</code>), clustering (<code>school</code>) and strata
+(<code>strata</code>).</p></li>
+<li><p>Calculate crude measures of association, with corresponding 95%
+confidence intervals, between the above factors and having a fully
+vaccinated child (using <code>vacful</code> as the study outcome). Use a
+Poisson regression mixed effects model with robust error variance to
+calculate prevalence ratios, taking clustering into account by including
+the <code>school</code> variable as a random effect.</p></li>
+<li><p>If you have time, complete the optional exercise and calculate
+crude odds ratios, using <code>vacful</code> as the outcome measure and
+the factors listed in table 5.2 as explanatory variables. As with
+prevalence ratios, include <code>school</code> as a random effect. Note
+that odds ratios overestimate the risk ratio when an outcome is common,
+or above approximately 10% prevalence. For this reason, odds ratios may
+not be an appropriate measure of association for many of the explanatory
+variables in this data set.</p></li>
+</ol>
+<p>For convenience, the explanatory variables to analyse are listed in
+the table below. Note that some will require labeling to make the output
+more human readable.</p>
+<table>
+<colgroup>
+<col width="41%" />
+<col width="29%" />
+<col width="29%" />
+</colgroup>
+<thead>
+<tr class="header">
+<th>Description</th>
+<th>Variable</th>
+<th>Comments</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>Minority group</td>
+<td><code>minority</code></td>
+<td>Already a labeled factor</td>
+</tr>
+<tr class="even">
+<td>Mother’s age at childbirth</td>
+<td><code>magegroup</code></td>
+<td>Reverse order of levels</td>
+</tr>
+<tr class="odd">
+<td>Father’s education</td>
+<td><code>educf</code></td>
+<td>Requires labeling (category)</td>
+</tr>
+<tr class="even">
+<td>Number of siblings</td>
+<td><code>nsibcat</code></td>
+<td>Already a labeled factor</td>
+</tr>
+<tr class="odd">
+<td>Balanced positive opinion on vaccination</td>
+<td><code>a1posyn</code></td>
+<td>Requires labeling (binary)</td>
+</tr>
+<tr class="even">
+<td>Balanced positive opinion on vaccination</td>
+<td><code>a1posg</code></td>
+<td>Requires labeling (category)</td>
+</tr>
+<tr class="odd">
+<td>Uncritical positive opinion on vaccination</td>
+<td><code>uncritical</code></td>
+<td>Requires labeling (binary)</td>
+</tr>
+<tr class="even">
+<td>Vaccination is necessary for my child</td>
+<td><code>a1x1g</code></td>
+<td>Requires labeling (binary)</td>
+</tr>
+<tr class="odd">
+<td>Vaccines may harm my child</td>
+<td><code>a1x2g</code></td>
+<td>Requires labeling (binary)</td>
+</tr>
+<tr class="even">
+<td>Natural disease preferable to vaccines</td>
+<td><code>a1x5g</code></td>
+<td>Requires labeling (binary)</td>
+</tr>
+<tr class="odd">
+<td>Long distance to immunization site</td>
+<td><code>a3x1g</code></td>
+<td>Requires labeling (binary)</td>
+</tr>
+<tr class="even">
+<td>Inconvenient opening hours</td>
+<td><code>a3x2g</code></td>
+<td>Requires labeling (binary)</td>
+</tr>
+<tr class="odd">
+<td>Cost of vaccines</td>
+<td><code>a3x5g</code></td>
+<td>Requires labeling (binary)</td>
+</tr>
+</tbody>
+</table>
+<p><strong>R coding tips:</strong></p>
+<p>You will first need to convert all the explanatory variables to
+labelled factors. A few of these have already been converted to factors
+in the previous section; to quickly deal with the remainder, we can use
+<code>purrr::map()</code> to loop through the list of binary (0,1)
+variables and label them as (no, yes).</p>
+<p>Next, you can calculate the summary counts <em>N</em> for each
+explanatory variable, by cross-tabulating <code>vacful</code> with the
+variables of interest.</p>
+<p>You can then calculate full vaccine coverage for each explanatory
+variable by looping through them with <code>purrr::map()</code> and
+using <code>sitrep::tab_survey()</code> as before.</p>
+<p><em>NB:</em> You can use the same survey design, but it is advisable
+to run the code to create it again after updating or making changes to
+any variables; if not, attempts to use the old survey design on a
+revised data set will result in an error, indicating that the mutated
+columns cannot be found.</p>
+<p>The Poisson model can be created using the
+<code>glmmML::glmmML()</code> function, which creates generalized linear
+mixed effects Poisson (or binomial) regression models, with clustering.
+You will need to specify the following arguments:</p>
+<ul>
+<li><p><em>formula</em> in the format <code>outcome ~ dependent</code>
+variable (e.g. <code>vacful ~ minority</code>)</p></li>
+<li><p><em>family</em>: select the type of model to run,
+e.g. <code>poisson</code></p></li>
+<li><p><em>data</em>: name the data set,
+e.g. <code>vaccine</code></p></li>
+<li><p><em>cluster</em>: name the clustering variable,
+e.g. <code>school</code></p></li>
+</ul>
+<p>To obtain prevalence ratios and 95% confidence intervals from the
+model results, we will apply the following formulas to the model
+output:</p>
+<ol style="list-style-type: decimal">
+<li><p><span class="math inline">\(PR = exp(coeff)\)</span> will
+calculate the prevalence ratios;</p></li>
+<li><p><span class="math inline">\(CI = (coeff + / - 1.96 \times
+se)\)</span> to calculate 95% confidence intervals, where:</p></li>
+</ol>
+<ul>
+<li><p><span class="math inline">\(PR\)</span> = Prevalence
+ratio</p></li>
+<li><p><span class="math inline">\(CI\)</span> = Confidence
+intervals</p></li>
+<li><p><span class="math inline">\(exp\)</span> = exponentiate</p></li>
+<li><p><span class="math inline">\(coeff\)</span> = coefficient</p></li>
+<li><p><span class="math inline">\(se\)</span> = standard error</p></li>
+<li><p><span class="math inline">\(1.96 = \frac {1}
+{CI}\)</span></p></li>
+</ul>
+<p>Finally, if you have time to complete the optional exercise, you can
+repeat the <code>glmmML::glmmML()</code> model with the same parameters,
+but this time using <code>family = binomial</code> .</p>
+<p><em>A - preparing the data:</em></p>
+<p>First, we will convert the variables to labelled, ordered factors,
+with the first level of each factor representing the baseline
+(intercept) with which we will compare the other levels. For binary
+variables, this will be <code>0 = no</code> . For the non-binary
+categorical variables, this will normally be the smallest numeric
+category, e.g. <code>no siblings</code> for number of siblings, or the
+most general category, e.g. <code>General population</code> for minority
+group.</p>
+<pre class="r"><code>############################################
+# 01. Convert variables to labelled factors
+###########################################
+
+# Call up the data set:
+vaccine &lt;- vaccine %&gt;% 
+  
+  # Reverse the factor level order of nsibcat so it starts with &quot;no siblings&quot;:
+  mutate(nsibcat = fct_relevel(nsibcat, &quot;No siblings&quot;, &quot;1 - 2&quot;, &quot;3 or more&quot;)) %&gt;% 
+  
+  # Create a labeled factor from educf for father&#39;s education:
+  mutate(educf = factor(educf, 
+                           levels = c(2, 3, 4, 6),
+                           labels = c(&quot;Grammar school (&lt; 9 years)&quot;, 
+                                      &quot;High school (9 - 11 years)&quot;, 
+                                      &quot;College (12 years)&quot;, 
+                                      &quot;University (&gt; 12 years)&quot;))) %&gt;% 
+  
+  # Create a labelled factor from a1posg (balanced positive opinion, categories):
+  mutate(a1posg = factor(a1posg, 
+                         levels = c(0, 1, 2), 
+                         labels = c(&quot;No positive opinion&quot;, 
+                                    &quot;Moderate positive opinion&quot;, 
+                                    &quot;High positive opinion&quot;)))
+
+###################################################
+# 02. Convert binary variables to labelled factors
+##################################################
+
+# Now we can create a list of binary variables (no / yes) to label:
+binary_vars &lt;- c(&quot;a1posyn&quot;,
+                 &quot;uncritical&quot;, 
+                 &quot;a1x1g&quot;, 
+                 &quot;a1x2g&quot;, 
+                 &quot;a1x5g&quot;, 
+                 &quot;a3x1g&quot;, 
+                 &quot;a3x2g&quot;, 
+                 &quot;a3x5g&quot;)
+
+# Next, we can use mutate(across()) to convert them to labelled factors:
+vaccine &lt;- vaccine %&gt;%  
+  
+  # Mutate across:
+  mutate(across(
+    .cols = all_of(c(binary_vars)),   # Columns in the list binary_vars
+    .fns = ~factor(.x,                   # Convert to a factor           
+      levels = c(0, 1),             # Stipulate levels from existing values
+      labels = c(&quot;no&quot;, &quot;yes&quot;))))    # Label levels as no and yes
+
+
+###################################
+# 03. Update survey design
+###################################
+
+# Recreate the survey design to include the mutated variables:
+vce_design &lt;- vaccine %&gt;% 
+  
+  # Create survey design:
+  srvyr::as_survey_design(ids = school,      # This is the cluster variable
+                          weights = weight,  # These are the sample weights
+                          strata = strata)   # These are the 11 strata
+
+
+
+#######################################################
+# 04. Create labels for all variables to be tabulated
+######################################################
+
+# Create a list of all variables to analyse:
+allvars &lt;- c(&quot;minority&quot;, 
+             &quot;magegroup&quot;, 
+             &quot;educf&quot;,
+             &quot;nsibcat&quot;, 
+             &quot;a1posg&quot;, 
+             binary_vars)
+
+# Make it a named list so that variable names are included in outputs:
+allvars &lt;- purrr::set_names(allvars)
+
+
+# Create a liste of nice labels for allvars:
+allvarlabs &lt;- c(&quot;Minority group&quot;, 
+                &quot;Mother&#39;s age at childbirth&quot;, 
+                &quot;Father&#39;s education&quot;,
+                &quot;Number of siblings&quot;,
+                &quot;Balanced positive opinion on vaccination: likhert&quot;,
+                &quot;Balanced positive opinion on vaccination: binary&quot;,
+                &quot;Uncritical positive opinion on vaccination&quot;,
+                &quot;Vaccination is necessary for my child&quot;,
+                &quot;Vaccines may harm my child&quot;,
+                &quot;Natural disease preferable to vaccines&quot;,
+                &quot;Long distance to immunization site&quot;,
+                &quot;Inconvenient opening hours&quot;,
+                &quot;Cost of vaccines&quot;)</code></pre>
+<p><em>B - Counts of fully vaccinated children:</em></p>
+<p>In this section we will create a table of counts for vaccinated
+children by each of the variables listed in <code>allvars</code>. We can
+use the <code>dplyr</code> functions <code>pivot_longer()</code> and
+<code>count</code> to generate the counts for each factor level in each
+variable from <code>allvars</code>.</p>
+<p>We can then use <code>arrange</code> and <code>factor</code> to
+reorder the rows so that they match the order of questions and responses
+in table 5.2. Note that for each variable that is being summarized by
+<code>count()</code>, the factor levels are already preserved.</p>
+<p>Finally we will add a new column to the beginning of the table, to
+hold human readable question labels that will make the final results
+table easier to understand.</p>
+<p>We will then append the columns containing crude vaccination
+coverage, prevalence ratios and odds ratios to this base table.</p>
+<pre class="r"><code>restab52 &lt;- vaccine %&gt;% 
+  
+  # Filter for those that are fully vaccinated only:
+  dplyr::filter(vacful == 1) %&gt;% 
+  
+  # Create summary table:
+  tidyr::pivot_longer(cols = allvars,
+                      names_to = &quot;variable&quot;,
+                      values_to = &quot;response&quot;,
+                      values_drop_na = TRUE) %&gt;%
+  
+  # Add counts to the summary by variable and factor level:
+  count(variable, response) %&gt;% 
+  
+  
+  # Now update order of the question groups to match table 5.2:
+  dplyr::arrange(factor(x = variable, 
+                        levels = allvars)) %&gt;% 
+  
+  # Now create a new variable to hold the question labels:
+  mutate(question = case_when(
+    
+    variable == &quot;minority&quot;    ~ &quot;Minority group&quot;, 
+    variable == &quot;magegroup&quot;   ~ &quot;Mother&#39;s age at childbirth&quot;, 
+    variable == &quot;educf&quot;       ~ &quot;Father&#39;s education&quot;, 
+    variable == &quot;nsibcat&quot;     ~ &quot;Number of siblings&quot;, 
+    variable == &quot;a1posg&quot;      ~ &quot;Balanced positive opinion on vaccination&quot;, 
+    variable == &quot;a1posyn&quot;     ~ &quot;Balanced positive opinion on vaccination&quot;, 
+    variable == &quot;uncritical&quot;  ~ &quot;Uncritical positive opinion on vaccination&quot;, 
+    variable == &quot;a1x1g&quot;       ~ &quot;Vaccination is necessary for my child&quot;, 
+    variable == &quot;a1x2g&quot;       ~ &quot;Vaccines may harm my child&quot;, 
+    variable == &quot;a1x5g&quot;       ~ &quot;Natural disease preferable to vaccines&quot;, 
+    variable == &quot;a3x1g&quot;       ~ &quot;Long distance to immunization site&quot;, 
+    variable == &quot;a3x2g&quot;       ~ &quot;Inconvenient opening hours&quot;, 
+    variable == &quot;a3x5g&quot;       ~ &quot;Cost of vaccines&quot;
+    
+    )) %&gt;% 
+  
+  # Reorder columns so question labels come first:
+  dplyr::relocate(question, .before = variable)</code></pre>
+<p><em>C - Vaccination coverage stratified by parental characteristics
+and beliefs:</em></p>
+<p>Here we will repeat the same procedure as demonstrated in previous
+sections to estimate full vaccination coverage (<code>vacful</code>)
+taking into account weights, strata and clustering in
+<code>vce_design</code> and stratifying the results by each of the
+variables in <code>allvars</code>. We will loop through each of the
+variables using <code>purrr::map()</code> as before. We will then append
+the results to the table of counts we created in the previous section,
+using <code>bind_cols()</code> .</p>
+<pre class="r"><code>#################################
+# 01. Calculate VCE proportions:
+#################################
+
+restab_vce &lt;- purrr::map(
+  
+  # allvars is the list of variables to loop through that we already created:
+  .x = c(allvars), 
+  .f = function(x) {
+    
+    vce_design %&gt;% 
+      sitrep::tab_survey(vacful,        # VCE will be calculated for vacful
+                         strata = {x},  # each variable in allvars is a stratum
+                         keep = c(1),   # we are only interested in vacful == 1
+                         na.rm = TRUE,
+                         method = &quot;xlogit&quot;,
+                         wide = FALSE,     
+                         deff = TRUE,      
+                         pretty = FALSE) %&gt;% 
+      
+      # Rename minority column to stratum:
+      rename(stratum = x) %&gt;%
+      
+      # Remove row with missing values:
+      filter(!is.na(stratum))
+  }
+
+  ) %&gt;% 
+  
+  # Bind the results from each variable into a data.frame:
+  bind_rows() %&gt;% 
+  
+  # Remove value = 1 grouping (from vacful == 1)
+  ungroup %&gt;% 
+  
+  # Trim the decimal places for other columns:
+  mutate(across(c(n, deff), 
+                ~ round(.x, digits = 2))) %&gt;% 
+
+  # Convert the estimates and 95% CI to percentages:
+  mutate(across(contains(&quot;proportion&quot;),             
+                ~ percent(.x,                  # Cols to convert to %
+                          accuracy = 0.1,      # No. decimal places
+                          suffix = &quot;&quot;))) %&gt;%   # Do not add % sign
+  
+  # Create merged column for 95% CIs: 
+  tidyr::unite(col = &quot;CI95&quot;,                     # Name of new column in quotes
+               proportion_low, proportion_upp,   # Two columns to combine
+               sep = &quot; - &quot;,                      # Separator between values
+               remove = TRUE) %&gt;%                # Remove old columns
+  
+  # Select the columns to merge:
+  dplyr::select(stratum,                         # stratum = response in restab52
+                deff,                            # Design effect for reference
+                n,                               # Estimated count for reference
+                proportion,                      # VCE (%) to add to table
+                CI95)                            # VCE 95% CIs for reference</code></pre>
+<p>Now we can bind the first two tables together:</p>
+<pre class="r"><code># Bind the two tables together on stratum = response:
+restab52 &lt;- restab52 %&gt;% 
+  
+  # Join the vaccine coverage estimate to the counts by stratum / response:
+  left_join(y = dplyr::select(.data = restab_vce,
+
+                              # Columns from restab_vce to add to restab52:
+                              stratum,
+                              proportion),
+
+            # Indicate ID columns to join by:
+            by = c(&quot;response&quot; = &quot;stratum&quot;)) %&gt;%
+
+  # Add brackets around vaccine coverage estimate proportion:
+  mutate(proportion = paste0(&quot;(&quot;, proportion, &quot;)&quot;)) %&gt;%
+  
+  # Create combined count and estimated vaccine coverage column:
+  tidyr::unite(col = &quot;n_vce&quot;, 
+               n, proportion, 
+               sep = &quot; &quot;, 
+               remove = TRUE)</code></pre>
+<p><em>D - Crude prevalence ratios for vaccination in association with
+parental characteristics and beliefs:</em></p>
+<p>In this section you will create and run a Poisson regression model,
+tidy up the results, put them in a table and loop the variables in
+<code>allvar</code> through the whole process, as before. As weights are
+not necessarily as relevant for this process (see discussion in main
+case study guide), we will just account for clustering by school
+class.</p>
+<p>It is advisable to first run the model on a single variable, to
+become familiar with the inputs and outputs. An example for
+<code>vacful ~ minority</code> is included below. The overall results
+can be reviewed with the <code>summary()</code> command, while specific
+elements are stored as lists. Because these are raw results, you will
+need to extract the list of <code>coefficients</code> from the model
+output, which can be done in the same way as referencing columns in a
+data set, e.g. <code>mymodel$coefficients</code> , where
+<code>mymodel</code> is the name you have given to store the model
+output. These need to be exponentiated to give the prevalence ratios. In
+addition, you will also need to extract the standard errors, which are
+stored in <code>coef.sd</code></p>
+<p>Note that a robust variance estimate is already made with the methods
+used in the <code>glmmML</code> package, so it does not need to be
+specified. Running this model as a standard <code>glm()</code>
+(available in base R) gives less robust estimates.</p>
+<p>The <code>glmmML()</code> function has a special argument for
+clustering, called <code>cluster</code>. According to the study design,
+clustering was performed at the level of school classes
+(<code>school</code>). However, the school class IDs are numeric and
+therefore need to be converted to a factor before being passed to the
+model (otherwise it would be treated like a continuous variable).</p>
+<pre class="r"><code>#######################################
+# 01. Becoming familiar with the model
+#######################################
+
+# Before running the model on the list of variables, try running it on one:
+pmodel1 &lt;- glmmML::glmmML(formula = vacful ~ minority,  # outcome ~ explanatory 
+                          family = poisson,             # poisson or binomial
+                          cluster = factor(school),     # cluster variable
+                          data = vaccine)               # Data set to use
+
+# Now look at the summary output:
+summary(pmodel1)
+
+# And pull out just the coefficients:
+pmodel1$coefficients
+
+# Or just the standard errors:
+pmodel1$coef.sd
+
+# To calculate prevalence ratios, exponentiate the coefficients:
+# Note this is a named list - the names are made up of the variable + respnse
+pr &lt;- exp(pmodel1$coefficients)
+
+# To calculate lower 95% confidence intervals:
+lci95 &lt;- exp(pmodel1$coefficients - 1.96 * pmodel1$coef.sd)
+
+# To calculate upper 95% confidence intervals:
+uci95 &lt;- exp(pmodel1$coefficients + 1.96 * pmodel1$coef.sd)
+
+# To tabulate results:
+poisondf &lt;- tibble(response = names(pmodel1$coefficients), # extract names too
+                   pr = exp(pmodel1$coefficients), 
+                   lci95 = exp(pmodel1$coefficients - 1.96 * pmodel1$coef.sd), 
+                   uci95 = exp(pmodel1$coefficients + 1.96 * pmodel1$coef.sd))</code></pre>
+<p>Next, we can create a function that will perform the same tasks, put
+the model results into a table and tidy up the output:</p>
+<pre class="r"><code># Create function to loop through variables:
+
+poison_tabulator &lt;- function(predictor) {
+  
+  # Construct the model formula:
+  pm_formula = paste0(&quot;vacful ~ &quot;, predictor)
+  
+  # Construct the model:
+  modres = glmmML::glmmML(formula = as.formula(pm_formula), 
+                          family = poisson,
+                          cluster = factor(school), 
+                          data = vaccine) 
+  
+  # Construct results table:
+  modtab = tibble(
+    
+    # Get the variable and response labels:
+    varids = names(modres$coefficients), 
+    
+    # Calculate and add the prevalence ratios:
+    pr = exp(modres$coefficients), 
+    
+    # Calculate and add the lower 95% confidence intervals:
+    lci95 = exp(modres$coefficients - 1.96 * modres$coef.sd), 
+    
+    # Calculate and add the upper 95% confidence intervals:
+    uci95 = exp(modres$coefficients + 1.96 * modres$coef.sd)) %&gt;% 
+    
+    # Filter out the intercepts:
+    filter(varids != &quot;(Intercept)&quot;) %&gt;% 
+    
+    # Separate variable name and response label into 2 columns:
+    tidyr::separate(col = varids, 
+                    into = c(&quot;variable&quot;, &quot;response&quot;), 
+                    sep = predictor) %&gt;% 
+    
+    # Fill variable column with the name of the variable that was modelled:
+    mutate(variable = predictor) %&gt;% 
+    
+    # Tidy up numbers (round to 2 decimal places):
+    mutate(across(c(pr, lci95, uci95), ~ round(.x, digits = 2))) %&gt;% 
+  
+  # Return the results table:
+  return(modtab)
+
+}  </code></pre>
+<p>Because the function only has one input (the predictor or explanatory
+variable that you want to model), we can simply pipe the list of
+variables into the function to run it, and then <code>bind_rows()</code>
+to combine all the results into one table:</p>
+<pre class="r"><code>########################################
+# 02. Looping allvars through the model
+########################################
+
+# Apply the model to the list of variables called &#39;allvars&#39;:
+restab_pois &lt;- allvars %&gt;% 
+  
+  # Loop them through the &#39;poison_tabulator&#39; function we just created:
+  purrr::map(poison_tabulator) %&gt;% 
+  
+  # Bind the results into a single table:
+  bind_rows()</code></pre>
+<p>Note that we removed the intercepts - in table 5.2, these have been
+encoded as 1. We can now merge these results with the table containing
+counts and vaccine coverage, using the <code>response</code> variable.
+We can then add a 1 for the blanks, and convert the table to a
+<code>flextable</code> for printing.</p>
+<pre class="r"><code># Merge the two tables with a left join on response:
+restab52 &lt;- restab52 %&gt;% 
+  
+  # Join the counts / vaccine coverage table to the poisson table on response:
+  left_join(y = dplyr::select(.data = restab_pois,
+
+                              # Columns to include:
+                              response,
+                              pr, 
+                              lci95, 
+                              uci95),
+
+            # Indicate ID columns to join by:
+            by = c(&quot;response&quot; = &quot;response&quot;)) %&gt;%
+
+  # Combine PR and 95% CI:
+  mutate(pr95 = paste0(pr, 
+                       &quot; (&quot;, 
+                       lci95, 
+                       &quot; - &quot;, 
+                       uci95, 
+                       &quot;)&quot; )) %&gt;% 
+  
+  # Select columns to drop for the final table:
+  select(-c(pr, lci95, uci95)) %&gt;% 
+  
+  # Encode intercepts as 1:
+  mutate(pr95 = case_when(pr95 == &quot;NA (NA - NA)&quot; ~ &quot;1&quot;)) %&gt;% 
+  
+  # Lastly we can convert it to a flextable for printing:
+  flextable::flextable() %&gt;% 
+  
+  # Add nice theme:
+  flextable::theme_booktabs(bold_header = TRUE) %&gt;% 
+  
+  # Add labels:
+  flextable::set_header_labels(values = list(
+    question = &quot;Survey question&quot;, 
+    variable = &quot;Variable&quot;,
+    response = &quot;Response&quot;, 
+    n_vce = &quot;N vaccinated (% VCE)&quot;, 
+    pr95 = &quot;Prevalence rate (95% CI)&quot;)) %&gt;% 
+  
+  # Adjust column widths to fit text:
+  flextable::set_table_properties(layout = &quot;autofit&quot;) %&gt;% 
+  
+  # Right-align last 2 columns (weighted VCE and 95% CI):
+  flextable::align(j = 4:5, align = &quot;right&quot;, part = &quot;all&quot;)</code></pre>
+<p>If you have time, you are welcome to try the optional exercise, which
+is to calculate odds ratios instead of prevalence rates, keeping all
+other parameters the same as above and comparing the results.</p>
+<p>The easiest way to do this is to change the <code>family</code>
+argument in the <code>glmmML::glmmML()</code> function from poisson to
+<code>binomial</code> and then repeat the rest of the steps, as above.
+Remember to give the output a different name, so that it does not get
+over-written. You can then append to the above table and discuss any
+differences you observe in the results.</p>
 </div>
 </div>
 </div>
