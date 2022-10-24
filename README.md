@@ -13,10 +13,10 @@ conducting survey analysis on vaccination coverage data from Greece.
 Data sets and other associated materials are also included.
 
 A HTML version of the latest guide can be accessed online
-[here](VCE_R_guide_2022.html). We recommend you use the HTML version of
-this guide as it is easier to navigate, however if you prefer, you can
-also download the .pdf or Microsoft Word versions from the **guide**
-folder.
+[here](https://epiet.github.io/RapidAssessmentSurveys/VCE_R_guide_2022.html).
+We recommend you use the HTML version of this guide as it is easier to
+navigate, however if you prefer, you can also download the .pdf or
+Microsoft Word versions from the **guide** folder.
 
 Comments and suggestions are welcome. If you have found a bug in the
 case study code, please raise an issue about it
