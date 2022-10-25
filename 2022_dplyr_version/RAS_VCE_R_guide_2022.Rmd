@@ -173,17 +173,21 @@ module, MVA).
 This guide is for participants who wish to undertake the RAS vaccine
 coverage case study using R as the primary analysis software. All the
 information required to complete the case study has been included. The
-following materials have been provided:
+following materials have been provided in the participant pack:
 
-1.  This guide, available as an interactive HTML file to view in your
-    browser
-2.  This guide, available as a static Microsoft Word document for
-    printing
-3.  `packages2install.R`: R script for installing the required packages
-4.  `data`: folder containing all the data sets required for this case
-    study
-5.  `RAS_VC_R_code.Rmd`: R markdown file with the coding solutions for
-    each task
+1.  This guide, available in three formats: 
+    + interactive HTML file to view in your internet browser
+    + static Microsoft Word document which can be edited and printed
+    + static .pdf document which can be printed
+    
+2.  `data` folder containing the required data sets for this case study:
+    + `Sampling_frames.xlsx`
+    + `vaccine4.dta`
+    + `vaccine5.dta`
+
+3.  `RAS_VCE_R_packages2install.R`: R script for installing required packages
+
+4.  `RAS_VCE_R_code_2022.Rmd`: R markdown with coding solutions for each task
 
 You may find it easier to view and work through the html file in your
 internet browser, as it has the following advantages:
@@ -231,12 +235,12 @@ coding syntax.
 
 The packages required for this case study can be installed by running
 the code below. This code has also been made available as a separate R
-script. It uses the `pload()` function from the `pacman` package as this
-will check the user's library for required packages, install them if
-they are missing, and then load them into the current R session. Once
-the packages are installed, you will also need to rerun this code chunk
-at the beginning of each session, to ensure that all the required
-packages are loaded.
+script in the participant pack, called `RAS_VCE_R_packages2install.R`. It uses 
+the `pload()` function from the `pacman` package as this will check the user's 
+library for required packages, install them if they are missing, and then load 
+them into the current R session. Once the packages are installed, you will also 
+need to rerun this code chunk at the beginning of each session, to ensure that 
+all the required packages are loaded.
 
 ```{r packages, results='hide', message=FALSE, warning=FALSE}
 
@@ -333,21 +337,23 @@ the packages into your R environment.
 
 **File organisation:**
 
-The R practical material for this case study is stored in a folder
-called `rvcs_2022`. Please download this folder from EVA and save it on
-your computer. We recommend saving this file to a location that is not
-connected to OneDrive or to any other Shared Drive, if possible, as this
-can sometimes interfere with package installs or other functionality.
+The R practical material for this case study is available in a zip folder
+called `RAS_VCE_participant_pack`. You can download this folder [here](https://github.com/EPIET/RapidAssessmentSurveys/raw/master/2022_dplyr_version/RAS_VCE_participant_pack.zip) or from the EVA platform. Once you have downloaded it, 
+unzip the file and save it on your computer. We recommend saving this file to a 
+location that is not connected to OneDrive or to any other Shared Drive, if 
+possible, as this can sometimes interfere with package installs or other 
+functionality.
 
-There is an R project file (`.Rproj`) in this folder and we suggest you
-begin this practical session by double clicking on this file to open it.
+There is an R project file (`RAS_VCE_R_project.Rproj`) in this folder and we 
+suggest you begin this practical session by double clicking on this file to open
+it.
 
-In the `Files` pane of your RStudio window, you should see an R markdown
-file called `RAS_vaccine_coverage_case_study_R_code.Rmd` . Click on this
-file to open it. It contains all the code chunks that are also present
-in this guide, but without explanatory text. This file is for you to run
-and explore the code in each chunk, modify it if needed and make your
-own notes.
+In the `Files` pane of your RStudio window, you should see a folder called 
+`rcode`.  Click on this folder in the RStudio pane to view the contents.
+Once you are inside this folder, you should see an R markdown file called `RAS_VCE_R_code_2022.Rmd` . Click on this file to open it. It contains all the 
+code chunks that are also present in this guide, but without explanatory text. 
+This file is for you to run and explore the code in each chunk, modify and 
+experiment with the code if you wish, and make your own notes.
 
 The data sets have been stored in a sub-folder called `data`.
 

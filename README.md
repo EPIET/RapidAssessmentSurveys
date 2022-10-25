@@ -1,6 +1,6 @@
 EPIET case study: vaccination survey analysis in R
 ================
-24 October 2022
+25 October 2022
 
 <!-- README.md is generated from README.Rmd. Please edit that file -->
 
@@ -8,15 +8,36 @@ EPIET case study: vaccination survey analysis in R
 
 This [repository](https://github.com/EPIET/RapidAssessmentSurveys) hosts
 the R learning materials for the EPIET Rapid Assessments and Surveys
-(RAS) module. In particular, you will find the R case study guide for
-conducting survey analysis on vaccination coverage data from Greece.
-Data sets and other associated materials are also included.
+(RAS) module. In particular, you will find the R case study guide and
+associated materials for conducting survey analysis on vaccination
+coverage data from Greece.
 
-A HTML version of the latest guide can be accessed online
-[here](https://epiet.github.io/RapidAssessmentSurveys/VCE_R_guide_2022.html).
-We recommend you use the HTML version of this guide as it is easier to
-navigate, however if you prefer, you can also download the .pdf or
-Microsoft Word versions from the **guide** folder.
+Credits go to the original authors of the case study, as well as the
+contributors who subsequently created and adapted the R companion guide
+(see version history in the guide for the list of authors and
+contributors). The guide is reviewed and updated annually.
+
+This case study is covered by a Gnu General Public Licence version 3
+(GPL-3). Please read the [licence
+conditions](https://github.com/EPIET/RapidAssessmentSurveys/blob/master/LICENSE)
+before using or distributing this case study.
+
+To follow this case study, you will first need the participant pack,
+which can be downloaded
+[here](https://github.com/EPIET/RapidAssessmentSurveys/raw/master/2022_dplyr_version/RAS_VCE_participant_pack.zip).
+
+You can then access the R guide for this case study in two ways:
+
+-   Click on [this
+    link](https://epiet.github.io/RapidAssessmentSurveys/RAS_VCE_R_guide_2022.html)
+    to open the guide online in your internet browser (internet
+    connection required)
+-   The guide is also available in HTML, Microsoft Word and .pdf format
+    in the `guide` folder of the participant pack
+
+We recommend you use the HTML version of this guide (either online or
+off-line) as it is easier to navigate between the sections, however if
+you prefer, you can also print out the .pdf or Microsoft Word versions.
 
 Comments and suggestions are welcome. If you have found a bug in the
 case study code, please raise an issue about it
