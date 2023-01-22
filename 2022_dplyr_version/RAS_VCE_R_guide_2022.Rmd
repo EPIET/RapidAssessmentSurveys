@@ -287,6 +287,7 @@ pacman::p_load(
   #lubridate,  # work with dates
   #purrr       # iteration and working with lists
   janitor,     # data cleaning
+  matchmaker,  # data cleaning
   
   # Summary tables:
   #########################
@@ -4281,7 +4282,7 @@ analysis, we will recode these as factors. Because they all have the
 same number of factor levels (*n* = 2) and because the two factor levels
 have the same labels ('no' or 'yes'), we can do this conversion in one
 go, using the dplyr convenience function `across()` with the list of
-variables to convert that we created in the previous code chunk.
+variables to convert.
 
 To facilitate this process, we will first create a list containing the
 names of all of the binary variables, as character strings. We will also
@@ -4289,10 +4290,11 @@ create another list that contains both the binary variables and the
 other explanatory variables listed in table 5.0 that we want to iterate
 through in each analysis step.
 
-We can then use `purrr::set_names()` to apply human readable labels to
-the variable list. Later, we can use the labelled list to automatically
-annotate results tables (so that the variable / question label appears
-in tables instead of the variable name).
+We can then put the original variable names and a column of apply human 
+readable labels in a data frame. Later, we can use the 
+`matchmaker::match_vec()` function to recode, and automatically annotate 
+results tables (so that the variable / question label appears in tables 
+instead of the variable name).
 
 ```{r s5_varlists}
 
@@ -4310,6 +4312,16 @@ binary_vars <- c("a1posyn",
                  "a3x2g", 
                  "a3x5g")
 
+# Now iterate through the list of binary variables to convert them to factors:
+vaccine <- vaccine %>% 
+  # Mutate across list of binary variables to convert all to labelled factors:
+  mutate(across(
+    .cols = c(all_of(binary_vars)),    # Columns to loop through: all binary_vars
+    .fns = ~factor(.x,                 # Function to apply: convert to factor 
+      levels = c(0, 1),                # Stipulate levels from existing values
+      labels = c("no", "yes"))))       # Label levels as no and yes
+
+
 # Next, create a list of all variables to analyse:
 allvars <- c("minority", 
              "magegroup", 
@@ -4317,10 +4329,6 @@ allvars <- c("minority",
              "nsibcat", 
              "a1posg", 
              binary_vars)
-
-# Make it a named list so that variable names are included in outputs:
-allvars <- purrr::set_names(allvars)
-
 
 # Create a list of nice labels for allvars:
 allvarlabs <- c("Minority group", 
@@ -4337,18 +4345,8 @@ allvarlabs <- c("Minority group",
                 "Inconvenient opening hours",
                 "Cost of vaccines")
 
-# Add the names of original variables to use in recoding: 
-allvarlabs <- purrr::set_names(x = allvarlabs, nm = allvars)
-
-# Now iterate through the list of binary variables to convert them to factors:
-vaccine <- vaccine %>% 
-
-  # Mutate across list of binary variables to convert all to labelled factors:
-  mutate(across(
-    .cols = c(all_of(binary_vars)),    # Columns to loop through: all binary_vars
-    .fns = ~factor(.x,                 # Function to apply: convert to factor 
-      levels = c(0, 1),                # Stipulate levels from existing values
-      labels = c("no", "yes"))))       # Label levels as no and yes
+# Create a dataframe of original variable names and labels to use in recoding: 
+recoders <- cbind(allvars, allvarlabs)
 
 ```
 
@@ -4679,11 +4677,12 @@ restab52a <- vaccine %>%
   # (we will add weighted proportions later)
   dplyr::select(-proportion) %>%
   
-  # We can use our named vector of labels to recode the variable column
-  # Note the three exclamation marks (!!!) 
-  # This tells r that allvarlabs is a named character vector
-  # and we want to apply the names to the variable we are recoding
-  mutate(variable = recode(variable, !!!allvarlabs)) 
+  # We can use our dataframe of labels to recode the variable column
+  # Note the quotations to define which variables in recoders to use
+  # you could also simply remove these as the default recodes from col 1 to 2
+  mutate(variable = matchmaker::match_vec(variable, 
+                                          dictionary = recoders,
+                                          from = "allvars", to = "allvarlabs")) 
   
 ```
 
@@ -4767,7 +4766,7 @@ restab_vce <- purrr::map(
   dplyr::rename(vce_prop = proportion) %>% 
   
   # Add human readable labels to variable column:
-  mutate(variable = recode(variable, !!!allvarlabs)) %>% 
+  mutate(variable = matchmaker::match_vec(variable, recoders))  %>% 
   
   # Select the columns to keep:
   dplyr::select(variable,         # Variable name from allvars (to group)
@@ -4807,7 +4806,8 @@ restab52b <- restab52a %>%
             by = c("variable", "value")) %>%
 
   # Add brackets around vaccine coverage estimate proportion:
-  mutate(vce_prop = paste0("(", vce_prop, ")")) %>%
+  # note variables are between curly brackets {} within double quotation marks
+  mutate(vce_prop = stringr::str_glue("({vce_prop})")) %>%
   
   # Create combined count and estimated vaccine coverage column:
   tidyr::unite(col = "n_vce", 
@@ -4938,7 +4938,7 @@ arguments in the model that will stay the same for all the variables:
 poisson_tabulator <- function(predictor) {
   
   # Construct model formula:
-  pm_formula = as.formula(paste0("vacful ~ ", predictor))
+  pm_formula = as.formula(stringr::str_c("vacful ~ {predictor}"))
 
   # Construct the poisson model clustering by school with robust errors:
   modtab = fixest::feglm(fml = pm_formula, 
@@ -5004,17 +5004,13 @@ poiscrudetab <- allvars %>%
     
     # Create variable col (strings in 'term' that match any of allvars):
     variable = stringr::str_extract(term, 
-                                    paste0("(", 
-                                           paste0(allvars, collapse = "|"), 
-                                           ")")), 
+                                    str_c(allvars, collapse = "|")), 
     # Create value col (whats left after strings matching allvars are removed):
     value = stringr::str_remove(term, 
-                                paste0("(", 
-                                       paste0(allvars, collapse = "|"), 
-                                       ")"))) %>% 
+                                str_c(allvars, collapse = "|"))) %>% 
     
     # Add human readable labels to values in the variable column:
-    mutate(variable = recode(variable, !!!allvarlabs)) %>% 
+    mutate(variable = matchmaker::match_vec(variable, recoders)) %>% 
 
     # Remove unnecessary columns:
     dplyr::select(-term, -std.error, -statistic) %>% 
@@ -5063,7 +5059,7 @@ poiscrudetabpub <- poiscrudetab %>%
                 j = 3:5,
                 bg = "yellow") %>% 
   
-  # Add borders under the merged cells:
+  # Add border lines under the merged cells:
   flextable::hline(i = rle(cumsum(.$body$spans$columns[,1] ))$values, 
                    border = fp_border(style = "solid", width = 1)) %>% 
   
@@ -5090,7 +5086,7 @@ matches are unique. Note that in the Poisson crude prevalence ratios
 table, we removed the intercepts (reference values). When the two tables
 are merged, the prevalence ratio for reference values will present as
 missing (`NA`) which we can then recode to `ref` with the
-`dplyr::case_when()` function.
+`tidyr::replace_na()` function.
 
 \newpage
 
@@ -5133,7 +5129,7 @@ restab52c <- restab52b %>%
   
   # Encode the missing values for intercepts as 'ref'
   # Otherwise leave the rest of the values as they are:
-   mutate(pr_95 = case_when(is.na(pr_95) ~ "ref", TRUE ~ pr_95))
+  mutate(pr_95 = tidyr::replace_na(pr_95, "ref"))
 
 ```
 
@@ -5164,7 +5160,7 @@ all together.
 or_tabulator <- function(predictor) {
   
   # Construct model formula:
-  pm_formula = as.formula(paste0("vacful ~ ", predictor))
+  pm_formula = as.formula(str_glue("vacful ~ {predictor}"))
 
   # Construct the poisson model clustering by school with robust errors:
   modtab = fixest::feglm(fml = pm_formula, 
@@ -5534,15 +5530,13 @@ modeltab <- modelres %>%
   dplyr::filter(term != "(Intercept)") %>% 
   
   # Split term into two columns (variable name and level / value):
-  dplyr::mutate(variable = stringr::str_extract(term, 
-                                                paste0("(", 
-                                                paste0(allvars, collapse = "|"),
-                                                ")")), 
-                
-                value = stringr::str_remove(term, 
-                                            paste0("(", 
-                                            paste0(allvars, collapse = "|"),
-                                            ")"))) %>% 
+  dplyr::mutate(
+    # Create variable col (strings in 'term' that match any of allvars):
+    variable = stringr::str_extract(term, 
+                                    str_c(allvars, collapse = "|")), 
+    # Create value col (whats left after strings matching allvars are removed):
+    value = stringr::str_remove(term, 
+                                str_c(allvars, collapse = "|"))) %>% 
   
   # Round to 2 decimal places in numeric columns:
   mutate(across(
@@ -5606,7 +5600,7 @@ modeltab <- modeltab %>%
   relocate(reference, .before = value) %>% 
   
   # Add more human readable labels to the variable column:
-  mutate(variable = recode(variable, !!!allvarlabs)) 
+  mutate(variable = matchmaker::match_vec(variable, recoders))
 
 ```
 
