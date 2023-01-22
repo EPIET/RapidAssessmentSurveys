@@ -4,14 +4,15 @@ subtitle: "Childhood vaccination coverage survey in Greece, 2006"
 author: "Amy Mikhail and Alexander Spina (Applied Epi)"
 date: "Date revised: 27 May 2022"
 output:
+  pdf_document:
+    latex_engine: xelatex
+    toc: true
+    toc_depth: 3
   html_document:
     code_folding: hide
     toc: true
     toc_float:
       toc_collapsed: false
-    toc_depth: 3
-  pdf_document:
-    toc: true
     toc_depth: 3
   word_document:
     toc: true
@@ -4938,7 +4939,7 @@ arguments in the model that will stay the same for all the variables:
 poisson_tabulator <- function(predictor) {
   
   # Construct model formula:
-  pm_formula = as.formula(stringr::str_c("vacful ~ {predictor}"))
+  pm_formula = as.formula(stringr::str_glue("vacful ~ {predictor}"))
 
   # Construct the poisson model clustering by school with robust errors:
   modtab = fixest::feglm(fml = pm_formula, 
@@ -5100,10 +5101,7 @@ missing (`NA`) which we can then recode to `ref` with the
 poiscrudetabmini <- poiscrudetab %>% 
   
   # Combine prevalence ratios and 95% CIs in one column:
-  mutate(pr_95 = paste0(estimate, 
-                                 " (", 
-                                 `95% CI`, 
-                                 ")")) %>% 
+  mutate(pr_95 = str_glue("{estimate} ({`95% CI`})")) %>% 
   
   # Remove unnecessary columns:
   dplyr::select(-estimate, -`95% CI`, -p.value)
@@ -5216,17 +5214,13 @@ orcrudetab <- allvars %>%
     
     # Create variable col (strings in 'term' that match any of allvars):
     variable = stringr::str_extract(term, 
-                                    paste0("(", 
-                                           paste0(allvars, collapse = "|"), 
-                                           ")")), 
+                                    str_c(allvars, collapse = "|")), 
     # Create value col (whats left after strings matching allvars are removed):
     value = stringr::str_remove(term, 
-                                paste0("(", 
-                                       paste0(allvars, collapse = "|"), 
-                                       ")"))) %>% 
+                                str_c(allvars, collapse = "|"))) %>% 
     
     # Add human readable labels to values in the variable column:
-    mutate(variable = recode(variable, !!!allvarlabs)) %>% 
+    mutate(variable = matchmaker::match_vec(variable, recoders)) %>% 
 
     # Remove unnecessary columns:
     dplyr::select(-term, -std.error, -statistic) %>% 
@@ -5252,10 +5246,7 @@ vaccination coverage and prevalence ratios:
 orcrudetabmini <- orcrudetab %>% 
   
   # Combine prevalence ratios and 95% CIs in one column:
-  mutate(or_95 = paste0(estimate, 
-                                 " (", 
-                                 `95% CI`, 
-                                 ")")) %>% 
+  mutate(or_95 = str_glue("{estimate} ({`95% CI`})")) %>% 
   
   # Remove unnecessary columns:
   dplyr::select(-estimate, -`95% CI`, -p.value)
@@ -5281,7 +5272,7 @@ restab52d <- restab52c %>%
   
   # Encode the missing values for intercepts as 'ref'
   # Otherwise leave the rest of the values as they are:
-   mutate(or_95 = case_when(is.na(or_95) ~ "ref", TRUE ~ or_95))
+  mutate(or_95 = tidyr::replace_na(or_95, "ref"))
 
 ```
 
