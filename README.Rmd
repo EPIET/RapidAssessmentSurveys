@@ -1,5 +1,5 @@
 ---
-title: "Vaccination survey analysis and population estimates in R"
+title: "Rapid assessments and surveys in R"
 date: "`r format(Sys.time(), '%d %B %Y')`"
 output: github_document
 ---

@@ -1,4 +1,4 @@
-Vaccination survey analysis and population estimates in R
+Rapid assessments and surveys in R
 ================
 22 Jänner 2023
 
