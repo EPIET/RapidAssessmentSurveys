@@ -1,0 +1,844 @@
+---
+title: "Spatial sampling and population estimates with R"
+author: "Alexander Spina and Alexandre Blake (Applied Epi)"
+date: "July 2022"
+output: 
+  html_document:
+    code_folding: show
+    toc: true
+    toc_float:
+      toc_collapsed: true
+    toc_depth: 3
+theme: sandstone
+geometry: margin = 1.5cm
+editor_options: 
+  markdown: 
+    wrap: 72
+---
+
+```{r setup, include=FALSE}
+## This code is just to define settings for your R-markdown
+knitr::opts_chunk$set(echo = TRUE, 
+                      warning = FALSE, 
+                      message = FALSE)
+
+```
+
+## Prerequisites
+
+Participants are expected to be familiar with data management and basic
+analysis in R and RStudio. It is advisable to have up-to-date versions
+of both softwares installed. The code in this guide was updated and
+tested using:
+
+-   R version 4.1.3 (2022-03-10)
+-   RStudio version 2022.02.0 Build 443
+
+## R packages
+
+This guide uses packages from the `tidyverse` which are being used more
+and more for data analysis, due to their easy to read and efficient
+coding syntax. The approach for setting up an RStudio project, importing
+and cleaning data and managing code, as well as creating summary tables
+and graphs follows that presented in the [Epidemiologist R
+handbook](https://epirhandbook.com/en/) (click on the link to access
+it).
+
+The packages required for this case study can be installed by running
+the code below. It uses the `pload()` function from the `pacman` package
+as this will check the user's library for required packages, install
+them if they are missing, and then load them into the current R session.
+This code should therefore be rerun at the beginning of each session, to
+ensure that all the required libraries are loaded.
+
+```{r packages, results='hide'}
+
+# Ensures the package "pacman" is installed
+if (!require("pacman")) install.packages("pacman", quiet = TRUE)
+
+
+# Install and/or load required packages
+pacman::p_load(
+  leaflet, # making interactive maps
+  mapedit, # interactively drawing points and points on maps
+  sf,      # working with spatial data
+  here,    # file paths relative to R project root folder 
+  dplyr,   # data management
+  rio      # import data
+)
+
+```
+
+# Exercise 1: Step by step tutorial for estimating population size
+
+## Introduction
+
+Welcome to the step by step tutorial for estimating population size
+using the T-square and Roof-Simple-Random sampling method.\
+This tutorial was originally developed by Epicentre and benefits from
+work carried out by Epicentre to estimate the population size of Kario
+refugee camp (Darfur, Sudan) in 2019.\
+Alex Spina and Alex Blake (Applied Epi) adapted to the case study to be
+fully usable in R as a stand-alone case study, and added the T-square
+method. All original licenses for the epicentre case study apply here
+too.
+
+Kario refugee camp was created in 2017. In the following two years there
+was a high population movement in and out of the camp. In 2019 available
+population figures were considered unreliable.\
+Apart from an exhaustive census, which requires resources and time,
+rapid methods, such as the T-squares and Quadrat method, have been
+developed and used to estimate population size.
+
+More recently, on several occasions, we have used a method that combines
+satellite image analysis and a field survey. The principle of this
+method is:
+
+1.  To scan recent satellite images to identify and count manually or
+    semi-automatically, the number of roofs present in the area where we
+    want to evaluate the population size.
+2.  To estimate, through a field survey, the number of people having
+    slept under a randomly selected sample of roofs the night before the
+    survey.
+3.  To calculate the total population size by multiplying the average
+    number of person per roof estimated in the survey by the total
+    number of roofs identified in the image scanning.
+
+To present the precision and confidence interval of the estimate, we
+assumed that the number of people per roof follows a Poisson
+distribution. However, it is likely that many roofs identified during
+the scanning of the satellite image do not cover dwellings (i.e. animal
+shelters, shops, etc.) where nobody slept the night before the survey.
+
+MSF in the field in Kario was able to mark waypoints on the perimeter of
+the camp. MSF headquarters got access to a recent satellite image where
+the refugee camp was well visible. These two sources of information
+allows to apply the Roof-Simple-Random sampling method to estimate the
+population size of Kario refugee camp.
+
+## Objectives
+
+At the end of this tutorial, participants will be able:
+
+-   To carry out population estimation using the T-square method
+-   To carry out population estimation using the Roof-Simple-Random
+    sampling method
+-   To use R to carry out these estimation
+-   To understand advantages and disadvantages in using this sampling
+    method for estimating population size.
+
+## Material
+
+Make sure you are set with:
+
+-   R and Rstudio installed - as well as the necessary packages
+
+-   The following files downloaded to your computer:
+
+    -   SDN_Kario_17Feb2019_polygon.zip
+    -   SDN_Kario_17Feb2019_roofs.zip
+    -   survey_data_roof_random.xlsx
+    -   survey_data_t_squares.xlsx
+
+-   A smartphone with OsmAnd application installed or a GPS device (e.g.
+    Garmin eTREX)
+
+## Timing
+
+The tutorial is expected to last 1 hour (50 min scheduled time + 10 min
+buffer), with the main steps as follows:
+
+1.  Step *Delimit*: 10 min
+2.  Step *Identify*: 15 min
+3.  Step *Sample*: 5 min
+4.  Step *Export*: 10 min
+5.  Step *Calculate*: 10 min
+
+## Step 1: *Delimit*
+
+### Objective
+
+The objective of the first step is to locate and geographically delimit
+the area of the refugee camp by drawing (or uploading) a polygon.
+
+#### Task A: Find the location of Kario refugee camp
+
+We use the `leaflet` package for interactive mapping. Below we centre
+our map to the longitude and latitude points of Kario refugee camp. You
+can find these approximate coordinates by going to [Open Street
+Map](https://www.openstreetmap.org/) and searching for Kario camp. Then
+navigating to the location shown where there are buildings, right
+clicking and then selecting *show address*. You can move around and zoom
+in to the leaflet map below with your mouse.
+
+```{r camp_location}
+kario_camp <- leaflet() %>% 
+          # start an interactive plot (of the whole world)
+					addTiles() %>%
+          # center the leaflet map on the middle of our area of interest 
+					setView( 
+						lng = 26.208, 
+						lat = 11.1496,
+						zoom = 15) %>% 
+          # add in background images of the area from open street map 
+          # we use the humanitarian version for this setting as there is more info
+					addProviderTiles("OpenStreetMap.HOT")
+```
+
+You can view and interact with your map simply by calling the object you
+saved to, as below.
+
+```{r camp_view}
+
+# view your map interactively in browser 
+kario_camp
+
+```
+
+#### Task B: Draw the polygon
+
+We use the `mapedit` package to draw a polygon interactively. We use the
+leaflet map created just above and with `mapedit` you can "draw" your
+polygon over the area of interest. Click on the hexagon to draw a
+polygon. Zoom in on an area and draw a polygon around it by selecting
+points to connect in to a shape. (note that once you start selecting
+points you can still move the screen around by using both left-and-right
+click simultaneously). When you are done, click on "Finish". Then click
+on "Done" on the bottom right. Have a quick look at the [`mapedit`
+website](https://r-spatial.org/r/2017/06/09/mapedit_0-2-0.html) if you
+need additional help.
+
+```{r camp_polygon_draw, eval = FALSE}
+
+# interactively draw a shape on your map
+# your polygon is saved in the object "polygon" (which is a list)
+# more specifically in the slot "finished" of the object polygon.
+polygon <- editMap(kario_camp)
+
+
+# access your polygon 
+polygon <- polygon$finished
+```
+
+#### Task C: Read in an existing polygon (optional)
+
+*This is an alternative step that replaces polygon drawing in the
+previous task*
+
+Instead of drawing the polygon you can read in a polygon to R from an
+existing shapefile.
+
+We read in shapefiles with the `sf` package, which stands for simple
+features, and makes interacting with spatial data much simpler!
+
+We navigate (as in previous case studies) to our file using the `here`
+package, and specify the `.shp` file. While a shapefile consists of many
+more files than just the `.shp`, if we tell R where that is, it then
+knows to pull in the others.
+
+```{r camp_polygon_read}
+
+# read in your shapefile
+polygon <- read_sf(here::here("data", 
+                              "SDN_Kario_17Feb2019_polygon", 
+                              "SDN_Kario_17Feb2019_polygon.shp"))
+
+```
+
+You could then view the polygon to your existing map.
+
+```{r camp_polygon_plot}
+
+kario_camp <- kario_camp %>% 
+  # plot your polygon on top of the existing tiles
+  addPolygons(
+    # specify your sf object
+		data  = polygon,
+		# color the border red
+		color = "red",
+		# make the middle see-through
+		fillOpacity = 0)
+
+# view your map
+kario_camp
+
+```
+
+## Step 2: *Identify*
+
+### Objective
+
+The objective of this step is to mark the geographical coordinates of
+all roofs by scanning the satellite image delimited by the polygon. This
+step is only necessary for doing the Roof-Simple-Random method. Also
+note that with R you can download polygons of buildings directly from
+Open Street Maps, using the `osmdata` package. We have not done this in
+the case study but a chapter is being added to the epiRhandbook which
+will have a walk-through.
+
+#### Task A: Mark the roofs
+
+Here again we can use the `mapedit()` package, but this time we will
+draw points instead of polygons.
+
+As above, We use the leaflet map created just above and with `mapedit`
+you\
+can "draw" your points over each of the rooftops in the area of
+interest. Click on the point icon. (remember that once you start
+selecting points you can still move the screen around by using both
+left-and-right click simultaneously). When you are done, click on
+"Finish". Then click on "Done" on the bottom right. Have a quick look at
+the [`mapedit`
+website](https://r-spatial.org/r/2017/06/09/mapedit_0-2-0.html) if you
+need additional help.
+
+```{r household_points, eval = FALSE}
+
+# interactively draw a shape on your map
+# your points are saved in the object "households" (which is a list)
+# more specifically in the slot "finished" of the object households
+households <- editMap(kario_camp)
+
+## access your points 
+households <- households$finished
+```
+
+#### Task B: Read in existing rooftop points (optional)
+
+*This is an alternative step that replaces marking roofs in the previous
+task*
+
+The full roofs identification of the refugee camp was in fact carried
+out semi-automatically, manually validated and saved in a shapefile. As
+with the polygon above we can use the `sf` package to read in the points
+to R.
+
+An additional complication here is that the points are not stored as
+longitude and latitude, but as x and y coordinates. For this we use the
+`st_transform()` function to re-project the data to the appropriate
+format. We have to specify a coordinate reference system, and WGS84 is
+the standard one used by most mapping services online (e.g. Open Street
+Maps).
+
+```{r camp_points_read}
+
+# read in your shapefile
+households <- read_sf(here::here("data", 
+                              "SDN_Kario_17Feb2019_roofs", 
+                              "SDN_Kario_17Feb2019_roofs.shp")) %>% 
+  # re-project x and y coordinates to be longitude and latitude. 
+  # note that crs 4326 is a code for WGS84
+  st_transform(crs = 4326)
+```
+
+You could then view the polygon to your existing map.
+
+```{r camp_points_plot}
+
+kario_camp %>% 
+  # add circles for each point 
+  # (zoom in to see how they fit with rooftops)
+  addCircleMarkers(data = households)
+
+```
+
+## Step 3: *Sample*
+
+### Objective
+
+The objective of this step is to obtain a random selection of points
+(for T-Square), or roofs (for Roof-Simple-Random) that will be visited
+during the field survey. Sample geographical coordinates can be saved
+and exported in different file formats.
+
+#### Task A: sampling points (T-Square)
+
+We can also use the `st_sample()` function to draw a list of random
+points from within our camp polygon.
+
+The precision of the estimates depends on the sample size. The higher
+the number of sampled unites the better the precision. For the T-squares
+method it is generally recommended to take at least 50 points. For the
+sake of this exercise, we asked you to sample 50 points. In the real
+Kario survey, 400 roofs were sampled in order to do Roof-Simple-Random.
+
+```{r sample_points}
+
+# select 50 random points from your polygon (i.e. not necessarily households)
+random_points <- st_sample(polygon, 50) %>% 
+  # change back to a simple features dataframe (sampling made it a "collection")
+  st_as_sf()
+
+
+# Visualise the selected points 
+kario_camp %>% 
+  # add circles for each point 
+  # (zoom in to see how they fit with rooftops)
+  addCircleMarkers(data = random_points, color = "green")
+
+```
+
+#### Task B: sampling roofs (Roof-Simple-Random)
+
+We can also use the `st_sample()` function to draw a list of random
+points from our household points. Note that this could also be done for
+a polygon, and in some cases might be more appropriate. For example if
+you had a multi-polygon, which would be a box around each house (e.g.
+from `osmdata`), then sampling points from that would give the larger
+households higher chance of being selected, whereas sampling from points
+does not account for this. While it is not the case in this tutorial, in
+other situations you might have more than one polygon and need to sample
+roofs separately for each polygon.
+
+Notice here when you visualise that the points are much closer to where
+the population is actually situated in the camp (because you are
+sampling households rather than any space within the camp boundary) -
+this likely makes conducting your survey logistically simpler. In
+addition, you only need to survey half as many houses compared to
+T-Square (because you don't need to find the next closest house).
+
+```{r sample_roofs}
+
+# select 50 random points from your households
+random_roofs <- st_sample(households, 50) %>%
+  # transform back to points 
+  # (this comes out as a multipoint object, which is too complex)
+  st_cast("POINT") %>% 
+  # set the coordinate reference system for the points 
+  # note that crs 4326 is a code for WGS84
+  st_set_crs(4326) %>% 
+  # change back to a simple features dataframe (multipoint made it a "collection")
+  st_as_sf()
+  
+
+# Visualise the selected points 
+kario_camp %>% 
+  # add circles for each point 
+  # (zoom in to see how they fit with rooftops)
+  addCircleMarkers(data = random_roofs, color = "orange")
+
+```
+
+## Step 4: *Export*
+
+### Objective
+
+The objective of this step is to get your sampled points from R on to a
+mobile phone or GPS device to be able to do your survey.
+
+#### Task A: Export the sampled points
+
+We can use `sf` functions to save the sampled points in to a variety of
+different formats which can then be used on mobile phones with OsmAnd or
+a GPS device such as a Garmin *eTrex*. We have only exported the random
+points (rather than the random roofs), but the same code can be used for
+either. To save our points we use the `st_write()` function from the
+`sf` package.
+
+```{r export_points_gpx, results = 'hide'}
+
+# export sampled points to gpx
+random_points %>%
+  # gpx has a specific format which it accepts
+  # to meet this format we have to give a name to label each of the points
+  # note that this needs to be a lower case "name" 
+  # we consecutively number the points by combining "point" with the number of the row
+	mutate(name = paste0("point-", 1:n())) %>%
+	st_write(
+	  # define the file path and extension (gpx)
+		dsn    = here::here("data", "random_points.gpx"),
+		# define which format to use (this could be guessed by the function)
+		driver = "GPX",
+		# overwrite any previously existing files. 
+		delete_dsn = TRUE)
+
+
+```
+
+We could similarly use `st_write()` to save to a `.shp` or a `.kml`
+(used in Google Earth).
+
+```{r export_points_other, eval = FALSE}
+
+# export sampled points to shp 
+random_points %>%
+  # it can be useful to give a name to label each of the points
+  # we consecutively number the points by combining "point" with the number of the row
+	mutate(Name = paste0("point-", 1:n())) %>%
+	st_write(
+	  # define the file path and extension (kml)
+		dsn    = here::here("data", "random_points.shp"),
+		# overwrite any previously existing files. 
+		delete_dsn = TRUE)
+
+
+# export sampled points to kml 
+random_points %>%
+  # kml has a specific format which it accepts
+  # to meet this format we have to give a name to label each of the points
+  # note that this needs to be a lower case "Name" 
+  # we consecutively number the points combining "point" with the number of the row
+	mutate(Name = paste0("point-", 1:n())) %>%
+	st_write(
+	  # define the file path and extension (kml)
+		dsn    = here::here("data", "random_points.kml"),
+		# define which format to use (this could be guessed by the function)
+		driver = "kml",
+		# overwrite any previously existing files. 
+		delete_dsn = TRUE)
+
+```
+
+#### Task B: Transfer the sampled points
+
+1.  To a mobile phone via USB cable
+
+You can transfer your `gpx` file to osmand by connecting with a usb
+cable then copying the file to the following folder (on an android
+phone). This is probably the best option, particularly in settings with
+low internet connectivity (where you would be doing this type of
+survey).
+
+`PC>Mobile>Internal shared storage>Android>data>net.osmand>files>tracks`
+
+When on OsmAnd, navigate to *my place* and then click on *tracks*.
+
+2.  To a mobile phone via email
+
+Send the file to yourself via an email that you can access on your
+mobile. Download the file. Go to the *downloads* folder of the mobile
+phone and open the file with the OsmAnd app.
+
+3.  To a GPS device (Garmin eTrex) via USB cable
+
+Connect GPS device to the computer using the USB connection. The GPS
+device should appear as a computer device.\
+Using windows explorer go to the root of the computer (bside C: or D:)
+and open the Garmin eTrex device until the .../GPX/... folder.\
+Copy-paste the saved gpx file from your computer hard drive to the GPX
+folder of the Garmin eTrex device.
+
+## Step 4: *Calculate*
+
+### Objective
+
+The objective of this step is to calculate your population estimates
+using T-square and then Roof-Simple-Random.
+
+#### Task A: Enter T-Square data
+
+We are now going to pretend that the field survey has been completed.
+The closest households (GPS points) and number of people (\<5 years and
+\>= 5 years) who slept in each household the night before was recorded
+for the 50 sampled points.
+
+You could have physically measured the distance between households, but
+it is easier to just take a GPS point for each household visited and
+then use R to calculate the distance.
+
+This would normally be recorded in a data collection app (such as Kobo)
+or entered to some other form or database. For simplicity, we have
+already entered this data in to an excel sheet for you to import
+(`survey_data_t_squares.xlsx`). We import (as in previous case studies)
+using the `rio` package's `import` function.
+
+```{r import_data}
+
+## import your survey data
+survey_data <- rio::import(here::here("data", "survey_data_t_squares.xlsx"))
+```
+
+#### Task B: Calculate T-Square population estimate
+
+The formula for estimating population using T-Square is below. We will
+be walking through each of the parts needed for calculation
+step-by-step.
+
+$$
+N = n \times \frac {S}{\gamma}
+$$
+
+Where:  
+*N* = The population estimate  
+*n* = Average number of people per household  
+*S* = Area of the region of interest  
+$\gamma$ = Average area per household  
+
+Note that *S* over $\gamma$ gives us the total number of households in the camp. 
+
+The easiest step is to calculate the average number of people per
+household (*n*). To do this we use the counts of people for all the
+households in our survey. We will do this once for the overall and once
+for the under five year olds.
+
+```{r average_household_num}
+
+## combine the two overall household counts
+overall_avg <- c(survey_data$num_ppl, 
+                 survey_data$num_ppl_h2) %>%
+  ## return the mean 
+  mean()
+
+## combined the two under five household counts
+under5_avg <- c(survey_data$num_ppl_under_five, 
+                survey_data$num_ppl_under_five_h2) %>%
+  ## calculate the mean 
+  mean()
+
+
+## view your numbers 
+overall_avg
+under5_avg
+```
+
+Next, we need to calculate the area of the region of interest (*S*), in
+our case the area of Kario camp (in *m^2^*). We can do this using the
+`st_area()` function form `sf`.
+
+```{r camp_area}
+
+## calculate the area of within the polygon and return as a numeric
+## otherwise it is returned as a measurement (with m2 on the end)
+camp_area <- st_area(polygon) %>% 
+  as.numeric()
+
+## view your numbers
+camp_area
+```
+
+Next, we need to work out the average area per household ($\gamma$) in (in *m^2^*).  
+To do this we first need to calculate the area for each household individually, 
+and then work out the average. The formulas for this are below. 
+
+
+$$
+Area = \frac {\pi \times (\frac{d1^2 + d2^2}{2})} {2}
+$$
+Where:  
+*d1* = Distance between random sample point and nearest household (in *m*)  
+*d2* = Distance between first household and the next nearest household (in *m*)  
+
+We can then use the areas calculated above to plug in to the formula for the 
+average area per household ($\gamma$) below. 
+
+$$
+\gamma = \frac {\pi \times \sum_{1}^{i} (\frac{d1^2 + d2^2}{2})} {2 \times i}
+$$
+where:  
+*i* = The number of points (in our case 50)
+
+Our first step will be to calculate distances between our points.  
+We need to turn our GPS points in to longitude and latitude, Kobo
+simply stores these as numbers separated by a comma (which is
+interpreted as text).
+
+As a side-note: there would be ways to do this within your `survey_data`
+data frame but because `sf` does not allow multiple *geometry* columns
+in one object, it becomes complex. So instead we just define three
+separate point objects.
+
+```{r clean_t_squares}
+
+## extract the first randomly sampled points
+first_point <- survey_data %>% 
+  select(gps_point) %>% 
+  ## split in to a latitude and longitude column 
+  tidyr::separate(gps_point,into = c("lat","lon"), sep=", ") %>%
+  ## change columns to numeric
+  mutate(across(c(lat, lon), as.numeric)) %>%
+  ## set as sf points and define the crs
+  st_as_sf(coords = c("lat","lon"), crs = 4326)
+
+## extract the first randomly sampled points
+second_point <- survey_data %>% 
+  select(nearest_house_gps_point) %>% 
+  tidyr::separate(nearest_house_gps_point,into = c("lat","lon"), sep=", ") %>%
+  mutate(across(c(lat, lon), as.numeric)) %>%
+  st_as_sf(coords = c("lat","lon"), crs = 4326)
+
+## extract the first randomly sampled points
+third_point <- survey_data %>% 
+  select(second_house_gps_point) %>% 
+  tidyr::separate(second_house_gps_point,into = c("lat","lon"), sep=", ") %>%
+  mutate(across(c(lat, lon), as.numeric)) %>%
+  st_as_sf(coords = c("lat","lon"), crs = 4326)
+
+```
+
+Then we need to calculate the distances between our household GPS
+points, we can do this using the `st_distance()` function from `sf`.
+
+```{r calculate_distances}
+
+## add distance columns to your dataset
+survey_data <- survey_data %>% 
+  mutate(
+    ## calculate the distance between points
+    first_distance  = st_distance(first_point, second_point, by_element = TRUE), 
+    second_distance = st_distance(second_point, third_point, by_element = TRUE)
+  )
+
+```
+
+Next we can use these distances to calculate the average area per household. 
+We can skip having to work out the area per household and just use a 
+`summarise()` from `dplyr` with R's inbuilt calculator 
+functions to calculate $\gamma$ (note that $\pi$, is defined in R already). 
+
+```{r avg_area_per_house}
+
+avg_area <- survey_data %>% 
+  summarise(
+    ## use the formula to calculate average area for 50 points
+    avg_area = (pi * sum( (first_distance^2 + second_distance^2) / 2) ) / (2 * 50)
+  ) %>% 
+  ## extract the result
+  pull() %>% 
+  ## as a number
+  as.numeric()
+
+## view your numbers
+avg_area
+
+```
+
+In our final step we can plug in all of the parts we calculated above in to our 
+formula for T-Square and estimate the population. 
+We do this once for the overall, and once for the under fives. 
+We also demonstrate how to calculate a basic confidence interval using a poisson
+distribution. As stated above, a zero-inflated distribution would be more 
+appropriate; however there is no simple way of doing this with R as of yet, so 
+for the sake of this case study we have demonstrated as below. We define our 
+own function to pull the lower and upper confidence intervals together in to 
+one column (this might seem scary at first, but it is really just the same as 
+passing arguments to any other code! It also saves you time repeating yourself). 
+
+```{r t_square_pop_estimate}
+
+## use the T-square formula to calculate an overall population estimate
+N_overall <- overall_avg * (camp_area / avg_area)
+
+## use the T-square formula to calculate an under 5 population estimate
+N_under5 <- under5_avg * (camp_area / avg_area)
+
+
+## view your numbers
+N_overall
+N_under5
+
+
+## function to pull together confidence intervals
+## this function takes an argument `x` and places replaces x below wherever called
+## x in this case is your population estimate (number) that you have calculated
+intervals <- function(x) {
+  ## take your population estimate (x) and run a poisson test 
+  ## this returns a list and using $ we can extract only the CIs
+  estimates <- poisson.test(as.integer(x))$conf.int
+  
+  ## round to 1 decimal place 
+  estimates <- round(estimates, digits = 1)
+  
+  ## combine the lower and upper interval in to one character string
+  ## return (or print from the function)
+  ## this way you could use the function within a dplyr::mutate to add new cols
+  paste0(estimates[1], " - ", estimates[2])
+}
+
+## get the poisson confidence intervals for overall population estimate
+intervals(N_overall)
+
+## get the poisson confidence intervals for the under five population estimate
+intervals(N_under5)
+
+```
+
+
+
+#### Task c: Enter Roof-Simple-Random data
+
+We are now going to pretend that the field survey has been completed.
+The number of people (\<5 years and \>= 5 years) who slept in each
+household the night before was recorded for the 50 sampled points. This
+would normally be recorded in a data collection app (such as Kobo) or
+entered to some other form or database. For simplicity, we have already
+entered this data in to an excel sheet for you to import
+(`survey_data_roof_random.xlsx`). We import (as in previous case
+studies) using the `rio` package's `import` function.
+
+
+```{r import_roof_data}
+
+## import your survey data
+survey_data <- rio::import(here::here("data", "survey_data_roof_random.xlsx"))
+```
+
+#### Task D: Calculate Roof-Simple-Random population estimate
+
+Calculating a population estimate with the Roof-Simple-Random method is, by 
+comparison to T-square, much simpler. It only requires the average number of 
+people per household by the total number of households in the region of interest.
+
+$$
+N = n \times H
+$$
+
+Where:  
+*N* = The population estimate  
+*n* = Average number of people per household  
+*H* = Total number of households in the region of interest
+
+We have all the information we need to make this straightforward calculation. 
+We can use the `summarise()` function from `dplyr` to calculate the mean for 
+each of the age groups (using an `across()` as previously). Then we have the 
+total number of households from our shapefile, we only need to count the number 
+of rows (remember each point is a row, and so every row is a household), using 
+the `base` function `nrow()`. Then we just multiply and apply the same poisson
+distribution function to calculate confidence intervals as above. 
+
+```{r roof_data}
+
+## calculate the average number per house of children under and over five years old 
+averages <- survey_data %>% 
+  mutate(overall = under_five + five_plus) %>% 
+  summarise(across(c(under_five, five_plus, overall), mean))
+
+## pull the number of households from the shapefile 
+num_hh <- nrow(households)
+
+## multiply the averages by the number of houses 
+population <- averages * num_hh
+
+## function to pull together confidence intervals
+intervals <- function(x) {
+  estimates <- poisson.test(as.integer(x))$conf.int
+  
+  estimates <- round(estimates, digits = 1)
+  
+  paste0(estimates[1], " - ", estimates[2])
+}
+
+## get the poisson confidence intervals for each of the population estimates
+conf_ints <- population %>% 
+  mutate(across(everything(), intervals))
+
+## view your numbers
+population
+conf_ints
+
+```
+
+# Appendix 
+
+For the next exercises - you might be asked to go outside and record the boundary
+of an area using your mobile phone - OsmAnd then creates a `.gpx` file. 
+You can read in these files with the following code. 
+
+```{r read_gpx, eval = FALSE}
+
+## read in a track from osmand
+polygon <- st_read(
+  dsn = here::here("data", "track.gpx")
+)
+
+```
+
