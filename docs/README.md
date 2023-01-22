@@ -1,4 +1,4 @@
-EPIET case study: vaccination survey analysis in R
+EPIET case study: rapid assessments and surveys in R
 ================
 25 October 2022
 
