@@ -2,7 +2,7 @@
 title: "RAS module R case study code" 
 subtitle: "Childhood vaccination coverage survey in Greece, 2006"
 author: "Amy Mikhail and Alexander Spina (Applied Epi)"
-date: "Date revised: 27 May 2022"
+date: "Date revised: 11 May 2023"
 output:
   html_document:
     code_folding: hide
@@ -178,6 +178,10 @@ nclasses2sample_pub
 class_frame <- rio::import(here::here("data", "Sampling_frames.xlsx"),
                          which = "table1_3")
 
+# Set seed to ensure you always get produce the same result
+# (the number in set.seed can be anything you want)
+set.seed(26598)
+
 # Perform a simple random sample to select 22 classes from the list:
 msrs <- class_frame %>% 
   
@@ -226,6 +230,9 @@ sample_fraction
 # Define the sampling interval - the n to systematically sample 
 # (i.e. every nth row to choose):
 sample_n <- as.integer(nrow(class_frame)/22)
+
+# Set seed to ensure you always get produce the same result
+set.seed(26598)
 
 # Calculate the random starting point for systematic sampling:
 sample_start <- sample.int(n = sample_n, size = 1)
@@ -445,12 +452,13 @@ vaccine <- rio::import(here::here("data", "vaccine4.dta"))  %>%
 ```
 
 Using `gtsummary` package to create a descriptive summary table:
-
 ```{r s42_representation}
 
 #################################################
 # CREATE SUMMARY TABLE BY RESPONSE STATE
 #################################################
+
+# Step 1: create the statistical table with p-values 
 
 # Summarise the demographics of the two groups (+/- vaccine book) in a table:
 reptable <- vaccine %>% 
@@ -480,7 +488,20 @@ reptable <- vaccine %>%
                  
         # Define any test arguments that deviate from the default:
         test.args = list(all_tests("t.test") ~ list(var.equal = FALSE), 
-                         all_tests("chisq.test") ~ list(simulate.p.value = TRUE))) %>% 
+                         all_tests("chisq.test") ~ list(simulate.p.value = TRUE)))
+
+
+
+```
+
+Use `gtsummary` functions to choose how the table looks and add in some extras, 
+such as a total count column, labels (in bold and italicised) and column headers. 
+```{r s42_representation_formatting}
+
+# Step 2: format the statistical table  
+
+# Use the table created above 
+reptable <- reptable %>% 
   
   # Add total numbers to column headers:
   add_overall() %>% 
@@ -497,13 +518,20 @@ reptable <- vaccine %>%
   
   # Tidy up column headers so stats are on second line:
   modify_header(update = list(all_stat_cols(FALSE) ~ "**{level}**\nN = {n}", 
-                              stat_0 ~ "**Overall**\nN = {N}")) %>% 
+                              stat_0 ~ "**Overall**\nN = {N}"))
+```
+
+Use `flextable` to create a publication-ready table. 
+```{r s42_representation_publication}
+
+# Use the table created above 
+reptable <- reptable %>% 
   
   # Convert to flextable to left-align to page margin:
   as_flex_table() %>% 
   
   # Autofit columns to fit headers and content on one line:
-  flextable::autofit()
+  flextable::set_table_properties(width = 1, layout = "autofit")
   
 
 #################
@@ -511,7 +539,6 @@ reptable <- vaccine %>%
 ################
 
 reptable
-
 ```
 
 
@@ -733,7 +760,7 @@ area classification, Greece*
 # DISPLAY STRATIFIED RESULTS IN A TABLE
 ###########################################
 
-# Create a pretty flextable of the results:
+# format the contents of the table
 mmr2pubtable <- strata_frame %>% 
   
   # Convert vaccine coverage estimates and 95% CIs to percent:
@@ -753,7 +780,17 @@ mmr2pubtable <- strata_frame %>%
   # Reduce Sample fraction to two decimal places for display:
   mutate(across(
     .cols = tidyr::starts_with("Sample_"), 
-    .fns = ~ round(.x, digits = 2))) %>% 
+    .fns = ~ round(.x, digits = 2))) 
+
+```
+  
+
+We can then use the above tablea and print it using `flextable`. 
+
+```{r s44_mmr2_stratavce_table_flextable}
+
+# Create a pretty flextable of the results:
+mmr2pubtable <- mmr2pubtable %>% 
   
   # Convert to a flextable:
   flextable::flextable() %>% 
@@ -767,7 +804,8 @@ mmr2pubtable <- strata_frame %>%
                                              Area_type = "Type", 
                                              Total_pupils = "Population", 
                                              Selected_pupils = "Surveyed", 
-                                             Sample_fraction = "Fraction",                                                     Sample_weights = "Weights", 
+                                             Sample_fraction = "Fraction", 
+                                             Sample_weights = "Weights", 
                                              proportion = "MMR-2 VCE", 
                                              mmr2_95ci = "95% CI")) %>% 
   
@@ -787,8 +825,11 @@ mmr2pubtable <- strata_frame %>%
 
 mmr2pubtable
 
-
 ```
+
+  
+  
+
 
 
 ### 4.5: Vaccination coverage
@@ -799,17 +840,13 @@ mmr2pubtable
 
 Create a survey design for simple random sampling (no clustering, weights or strata) and estimate proportions of fully vaccinated individuals:
 
-```{r vce_451_srs}
-
+```{r vce_451_srs_design}
 #####################################
 # 01. SIMPLE RANDOM SAMPLING
 #####################################
 
-# Use this first result as the base row of table 4.5.1
-# Results for the other survey designs can be appended to the same table
-
-# Create new table of full vaccine coverage by (a) simple random sampling:
-table451a <- vaccine %>% 
+## Define a survey design object to be used for creating tables 
+vaccine_srs <- vaccine %>% 
   
   # Convert vaccrec to character:
   mutate(vaccrec = as.character(vaccrec)) %>% 
@@ -820,7 +857,21 @@ table451a <- vaccine %>%
   # Create survey design for SRS:
   srvyr::as_survey_design(ids = 1,            # No cluster variable
                           weights = NULL,     # No weights
-                          strata = NULL) %>%  # No strata
+                          strata = NULL)      # No strata
+
+```
+
+We can then use our survey design object to get a proportions table using `
+`sitrep::tab_survey()`. We will later combine the below table to results of 
+other survey design tables for comparison. 
+
+```{r vce_451_srs}
+
+# Use this first result as the base row of table 4.5.1
+# Results for the other survey designs can be appended to the same table
+
+# Create new table of full vaccine coverage by (a) simple random sampling:
+table451a <- vaccine_srs %>% 
   
   # Create proportions for fully vaccinated:
   sitrep::tab_survey(vacful,           # The variable to calculate proportions on
@@ -843,14 +894,14 @@ table451a <- vaccine %>%
 
 Repeat but this time adding sample weights to the survey design:
 
-```{r vce_451_weights}
+```{r vce_451_weights_design}
 
 #####################################
 # 02. SAMPLING WITH WEIGHTS
 #####################################
 
-# Create new table of full vaccine coverage by (b) sampling with weights:
-table451b <- vaccine %>% 
+## Define a survey design object to be used for creating tables 
+vaccine_weighted <- vaccine %>% 
   
   # Convert vaccrec to character:
   mutate(vaccrec = as.character(vaccrec)) %>% 
@@ -862,6 +913,15 @@ table451b <- vaccine %>%
   srvyr::as_survey_design(ids = 1,                  # No clustering
                           weights = Sample_weights, # This time include weights
                           strata = NULL) %>%        # No strata
+
+```
+
+As above, we use the survey object to create a table of proportions. 
+
+```{r vce_451_weights}
+
+# Create new table of full vaccine coverage by (b) sampling with weights:
+table451b <- vaccine_weighted
   
   # Create proportions for fully vaccinated:
   sitrep::tab_survey(vacful,           # The variable to calculate proportions on
@@ -882,14 +942,14 @@ table451b <- vaccine %>%
 
 Repeat, now adding sampling weights and clustering by school class to the survey design:
 
-```{r vce_451_clusters}
+```{r vce_451_clusters_design}
 
 #######################################
 # 03. CLUSTER SAMPLING WITH WEIGHTS
 #######################################
 
-# Create new table of full vaccine coverage by (C) cluster sampling with weights:
-table451c <- vaccine %>% 
+## Define a survey design object to be used for creating tables 
+vaccine_cluster <- vaccine %>% 
   
   # Convert vaccrec to character:
   mutate(vaccrec = as.character(vaccrec)) %>% 
@@ -901,6 +961,15 @@ table451c <- vaccine %>%
   srvyr::as_survey_design(ids = school,              # Clustering by school class
                           weights = Sample_weights,  # Use sampling weights
                           strata = NULL) %>%         # No strata
+
+```
+  
+As above, we use the survey object to create a table of proportions. 
+
+```{r vce_451_clusters}
+
+# Create new table of full vaccine coverage by (C) cluster sampling with weights:
+table451c <- vaccine_cluster
   
   # Create proportions for fully vaccinated:
   sitrep::tab_survey(vacful,           # The variable to calculate proportions on
@@ -920,14 +989,14 @@ table451c <- vaccine %>%
 
 Repeat again, this time using a survey design that has clustering, weights and strata:
 
-```{r vce_451_strata}
+```{r vce_451_strata_design}
 
 #########################################
 # 04. CLUSTER SAMPLING, WEIGHTS & STRATA
 #########################################
 
-# Create table of full vaccine coverage by (d) cluster sampling, weights & strata:
-table451d <- vaccine %>% 
+## Define a survey design object to be used for creating tables 
+vaccine_strata <- vaccine %>% 
   
   # Convert vaccrec to character:
   mutate(vaccrec = as.character(vaccrec)) %>% 
@@ -942,6 +1011,15 @@ table451d <- vaccine %>%
   srvyr::as_survey_design(ids = school,             # Cluster by school class
                           weights = Sample_weights, # Include sample weights
                           strata = strata) %>%      # Include strata
+
+```
+  
+As above, we use the survey object to create a table of proportions. 
+
+```{r vce_451_strata}
+
+# Create table of full vaccine coverage by (d) cluster sampling, weights & strata:
+table451d <- vaccine_strata
   
   # Create proportions for fully vaccinated:
   sitrep::tab_survey(vacful,           # The variable to calculate proportions on
@@ -957,19 +1035,20 @@ table451d <- vaccine %>%
 
 ```
 
+Combine tables 
 
-
-***Table 4.5.1 -** Vaccination coverage estimates with different survey
-designs*
-
-```{r vce_451_printab}
+```{r vce_451_printab_combine}
 
 # Bind results together in one table:
 table451 <- dplyr::bind_rows(table451a, # VCE with Simple random sampling 
                              table451b, # VCE with weights
                              table451c, # VCE with weights + clustering
                              table451d) # VCE with weights + clustering + strata
+```
 
+Clean up the table 
+
+```{r vce_451_printab}
 
 # Create publishable table of results:
 table451pub <- table451 %>% 
@@ -1002,7 +1081,17 @@ table451pub <- table451 %>%
                 deff, 
                 n, 
                 proportion, 
-                CI95) %>% 
+                CI95) 
+```
+
+Finally, we can use `flextable` as previously to make a publishable table. 
+
+***Table 4.5.1 -** Vaccination coverage estimates with different survey
+designs*
+
+```{r vce_451_printab_flextable}
+
+table451pub %>% 
   
   # Lastly we can convert it to a flextable for printing:
   flextable::qflextable() %>% 
@@ -1026,9 +1115,7 @@ table451pub <- table451 %>%
 #################
 
 table451pub
-
 ```
-
 
 *E - Estimating the intra-class correlation coefficient:*
 
@@ -1070,13 +1157,59 @@ vce_design <- vaccine %>%
 
 ```
 
-Next, estimate vaccine coverage for DTP3 stratified by minority group and urban/rural area of residence, using `purrr::map()` to iterate over the two stratifiers:
 
-```{r finaltab_dtp3stratified}
+Estimate vaccine coverage for DTP3 stratified by minority group and urban/rural area of residence
+
+```{r finaltab_dtp3stratified_simplified}
 
 #############################################
 # Estimate VC for DTP3 by minority and urban:
 #############################################
+
+# using the study design object 
+minority_table <- vce_design %>% 
+      # Create proportions for DTP3 stratified by minority:
+      sitrep::tab_survey(dtp3yn, 
+                         strata = minority,  
+                         keep = c(1),
+                         na.rm = TRUE,
+                         method = "xlogit",
+                         wide = FALSE,     
+                         deff = TRUE,      
+                         pretty = FALSE) %>% 
+      # Rename minority column to stratum (for merging tables)
+      rename(stratum = minority) %>%
+      # Remove row with missing values:
+      filter(!is.na(stratum))
+
+# using the study design object 
+urban_table <- vce_design %>% 
+      # Create proportions for DTP3 stratified by urban/rural:
+      sitrep::tab_survey(dtp3yn, 
+                         strata = urban,  
+                         keep = c(1),
+                         na.rm = TRUE,
+                         method = "xlogit",
+                         wide = FALSE,     
+                         deff = TRUE,      
+                         pretty = FALSE) %>% 
+      # Rename urban column to stratum (for merging tables)
+      rename(stratum = urban) %>%
+      # Remove row with missing values:
+      filter(!is.na(stratum))
+
+
+## combine in to a single dataframe
+restab452a <- bind_rows(minority_table, urban_table)
+```
+
+Next, estimate vaccine coverage for DTP3 stratified by minority group and urban/rural area of residence, using `purrr::map()` to iterate over the two stratifiers:
+
+```{r finaltab_dtp3stratified}
+
+####################################################
+# Loop - Estimate VC for DTP3 by minority and urban:
+####################################################
 
 
 restab452a <- purrr::map(
@@ -1223,11 +1356,9 @@ restab452d <- purrr::map(
 
 ```
 
+Combine all of the tables above
 
-***Table 4.5.2 -** Vaccination coverage estimates stratified by
-population sub-groups*
-
-```{r finaltab_printable}
+```{r finaltab_printable_combine}
 
 # combine each of the result tables in to one
 restabpub <- bind_rows(restab452a, 
@@ -1238,6 +1369,13 @@ restabpub <- bind_rows(restab452a,
   # to be able to ignore the value column (which only contains 1s)
   ungroup()
 
+```
+
+Tidy up the decimals and add percentages
+
+
+
+```{r finaltab_printable}
 
 # Create publishable table of results:
 restabpub <- restabpub %>% 
@@ -1288,7 +1426,18 @@ restabpub <- restabpub %>%
                                   pne1yn = "Pneumo: 1 dose", 
                                   var1yn = "Varicella: 1 dose", 
                                   vacful = "Fully vaccinated", 
-                                  vactime = "Timely vaccination")) %>% 
+                                  vactime = "Timely vaccination"))
+```
+
+Use `flextable` as previously to make a publishable table. 
+
+***Table 4.5.2 -** Vaccination coverage estimates stratified by
+population sub-groups*
+
+
+```{r finaltab_printable_flextable}
+
+restabpub <- restabpub %>% 
   
   # Lastly we can convert it to a flextable for printing:
   flextable::qflextable() %>% 
@@ -1319,16 +1468,14 @@ restabpub <- restabpub %>%
                           part = "body") %>% 
   
   # Adjust column widths to fit text:
-  flextable::autofit()
+  flextable::set_table_properties(width = 1, layout = "autofit")
 
 #################
 # Print results
 ################
 
 restabpub
-
 ```
-
 
 ## S5: Modelling Prevalence Ratios:
 
