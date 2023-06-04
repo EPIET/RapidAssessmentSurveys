@@ -1,0 +1,676 @@
+---
+title: "RAS Case study in R: Childhood vaccination coverage survey in Greece, 2006"
+author: "Patrick Keating (AGES),  and Alexander Spina (AGES)"
+date: "27 April 2017"
+output: word_document
+geometry: margin = 1.5cm
+
+---
+**Contributors to *R* code:**  
+Alexandre Blake (Epicentre)
+
+The following code has been adapted to *R* for learning purposes. The initial contributors are listed below. All copyrights and licenses of the original document apply here as well. 
+
+**Authors:**  
+Kostas Danis, Dimitris Papamichail and Takis Panagiotopoulos
+
+# Prerequisites#
+Participants are expected to be familiar with data management and basic analysis in R
+
+# An introduction to the R companion#
+This text was adapted from the introduction used at the 2016 TSA module.
+
+R packages are bundles of functions which extend the capability of R. Thousands of add-on packages are available in the main online repository (known as CRAN) and many more packages in development can be found on GitHub. They may be installed and updated over the Internet.
+
+We will mainly use packages which come ready installed with R (base code), but where it makes things easier we will use add-on packages. In addition, we have included a few extra functions to simplify the code required. All the R packages you need for the exercises can be installed over the Internet.
+
+```{r, eval=FALSE, results='hide', message=FALSE, warning=FALSE}
+# Installing required packages for the week
+required_packages <- c("foreign", "Hmisc", "dplyr", "survey")
+
+install.packages(required_packages)
+```
+
+```{r, echo = FALSE, eval=FALSE, results='hide', message=FALSE, warning=FALSE}
+# Installing required packages for the week
+required_packages <- c("foreign", "Hmisc", "dplyr", "ReporteRs", "survey", "knitr")
+
+install.packages(required_packages)
+```
+
+Run the following code at the beginning of the caset study to make sure that you have made available all the packages and functions that you need. Be sure to include it in any scripts too.
+
+```{r, eval = F, results='hide', message=FALSE, warning=FALSE}
+# Loading required packages for the week
+required_packages <- c("foreign", "Hmisc", "dplyr", "survey")
+
+for (i in seq(along = required_packages))
+  library(required_packages[i], character.only = TRUE)
+```
+
+```{r, echo=FALSE, eval= TRUE, results='hide', message=FALSE, warning=FALSE}
+# Loading required packages for the week
+required_packages <- c("foreign", "Hmisc", "dplyr", "ReporteRs", "survey", "knitr")
+
+for (i in seq(along = required_packages))
+  library(required_packages[i], character.only = TRUE)
+```
+
+```{r}
+# Function to make tables with counts and proportions 
+big.table <- function(data) {
+  count <- table(data)
+  prop <- round(prop.table(count)*100, digits = 2)
+  cbind(count,
+        prop) 
+}
+
+# Function used to calculate weighted proportions, CI and design effect
+svy_prop <- function(x, design) {
+p1 <- round(svyciprop(as.formula(paste0( "~" , x)), design, na.rm = T) * 100, digits = 2)
+p2 <- round(confint(p1) * 100, digits = 2)
+p3 <- deff(round(svymean(as.formula(paste0( "~" , x)), design, na.rm = T, deff = T) * 100, digits = 2))
+p4 <- cbind("Proportion" = p1, p2, "Design effect" = p3)
+}
+
+```
+
+R and Stata have minor differences in default settings and methods. In this document we will follow the Stata analysis as closely as possible, but small and usually unimportant differences may be noted between the statistical findings in R and those in Stata. Despite the differences, the findings from each statistical package should be comparable. At some points additional steps (which would usually be optional in R) will be taken to produce output which is comparable to that of Stata.
+
+The big.table function uses data directly and allows combining of counts, proportions and cumulative sums, thus reducing the number of lines of code required for descriptive analyses. The svy_prop function is used to calculate proportions, CIs, and the design effect of weighted variables.
+
+You will work with Stata.dta data sets which can be loaded into R with the "foreign" or "readstata13" packages. The appropriate functions to use will be indicated.
+
+R can hold one or many data sets in memory simultaneously, so there is usually no need to save intermediate files or close and re-open datasets.
+
+
+# Session 4 - Descriptive analysis
+
+Start a new R script, name it, for example, **session4.r** and save it in your working directory. Write all commands in the R script so that you can run (and re-run) it when needed during the exercise.
+
+```{r, echo = FALSE, eval = FALSE}
+setwd("N:/MED/IMED-VIE/INFE/Public/CC-INFE-Schmid/EPIET/Learning R/R Case studies/RAS 2017/session 4")
+
+```
+
+Open the **vaccine4.dta** dataset  
+```{r}
+vaccine <- read.dta("vaccine4.dta", convert.factors = FALSE)
+```
+
+#### Describing your dataset 
+You can view the structure of your data set using the following commands:
+
+```{r, eval=F}
+str(vaccine)
+summary(vaccine)
+describe(vaccine) 
+```
+```{r}
+# No. of school classes that participated
+describe(vaccine$school)
+
+# Proportion of records where a vaccination booklet was received
+big.table(vaccine$vaccrec)
+
+# Perform Student's t-test for comparison of means (for numeric variables)
+ttestage <- t.test(age~vaccrec, var.equal = TRUE, data = vaccine)
+
+# Chi2 test for comparison of proportions:
+genderresponse <- table(vaccine$gender, vaccine$vaccrec)
+chisq.test(genderresponse)
+```
+
+**See appendix for an example of code showing how to make table 4.1**
+
+
+## Task 4.3 - Calculate sampling weights
+#### Generate a new variable for sampling weights for each stratum in your dataset.
+
+To create sampling weights for each stratum in your dataset, you may use the following:
+```{r}
+# Create a 2-columned matrix that contains the population values per stratum
+popvar <- matrix(c(11,12,21,22,31,32,41,51,52,61,62,3282,1773,8609,3609,24311,6734,30345,12928,4813,3069,1132),
+                     nrow = 11, ncol = 2, byrow = F)
+
+# Rename the column names for ease of merging
+colnames(popvar) <- c("strata", "population")
+
+# Merge the original data set with the matrix
+vaccine <- merge(vaccine, popvar[, c("strata", "population")], by = "strata", all.x = T)
+```
+
+We will now use the **dplyr package** to create a new variable called **sample** which is the total number of records (rows) per stratum. For more information on dplyr see [here](https://cran.rstudio.com/web/packages/dplyr/vignettes/introduction.html).
+  
+We will use the **mutate** function of dplyr to add a new variable to the vaccine dataset.
+
+```{r}
+# Using dplyr, we create the sample variable, for which each row is equal to the total number of rows in a specific stratum
+# The %>% can be read below as "then"
+
+# First, we take the data frame vaccine, then
+vaccine <- vaccine %>%
+ # We group vaccine data by strata, then 
+  group_by(strata) %>%
+ # We create a new variable, sample, using n(), to count the number of rows per stratum 
+  mutate(sample = n())
+```
+```{r, eval = F}
+# You can view this new variable along with other key variables
+View(vaccine[,c("id","school", "strata","population", "sample")])
+```
+
+We now create the sampling fraction variable (samplef) which is the sample/population and then, finally the weight variable.  
+```{r}
+vaccine$samplef <- vaccine$sample/vaccine$population
+
+# The weight variable is the inverse of the sampling fraction
+vaccine$weight1 <- 1/vaccine$samplef
+```
+```{r, eval = F}
+#  You can view these new variables
+View(vaccine[,c("id","school", "strata","population","sample", "samplef", "weight1")])
+
+```
+
+## Task 4.4 - Calculate weighted proportions
+You can think of a weighted proportion as:  
+
+*  a weighted average of each observation of 0 and 1, where the weights for each stratum are equal to Ni/ni (i.e. inversely proportional to the sampling fraction of the ith stratum); 
+where: Ni=total population of stratum i; and 
+     ni=sample size of stratum i; or  
+     
+*  as a weighted average of the stratum specific proportions, where the weights are equal to Ni (i.e. proportional to the stratum population sizes).
+
+The researchers aimed to obtain separate estimates for the urban and rural sectors of the population in each region (strata) as well as of the whole country.  
+
+
+
+#### Calculate the vaccination coverage of MMR-2 (variable name mmr2yn) for each stratum
+We will first make a new data set that only keeps records of children that had vaccination booklets.
+```{r}
+vacc_rec <- vaccine[vaccine$vaccrec == 1, ]
+```
+
+There are multiple ways that you could create table 4.3 including the vaccination coverage of MMR-2. Below is one way which involves a number of steps.  
+
+**Step 1:** Obtain the total number of records, total sample, sampling fraction, weight per stratum using the **distinct** function of the the **dplyr package**:  
+
+```{r}
+# creates a table with unique values of population, sample, samplef and weight1 by strata
+
+# We make table1 using 5 variables from the vacc_rec data set, then
+table1 <- vacc_rec[, c("strata", "population", "sample", "samplef", "weight1")] %>%
+  
+# We group this data subset by strata, then 
+  group_by(strata) %>%
+  
+# We extract distinct/unique rows for each of the following variables
+  distinct(population, sample, samplef, weight1)
+
+table1
+```
+
+**Step 2:** Calculate the proportion of records that received MMR-2.  
+```{r}
+# Using dplyr, we calculate the number of rows by strata and by level of mmr2yn (0 and 1), and create the freq variable to calculate the % per strata and level of mmr2yn
+
+# We take the variables strata and mmr2yn from vacc_rec, then
+table2 <- vacc_rec[, c("strata", "mmr2yn")] %>%
+  
+# We group them by strata and level of mmr2yn (0 and 1), then  
+  group_by(strata, mmr2yn) %>%
+  
+# we create a variable that counts the number of rows by strata and level of mmr2yn, then
+  summarise(counts = n()) %>%
+# We create a new variable freq which is the proportion of each level of mmr2yn per stratum
+  mutate(freq = round(counts/sum(counts) * 100, digits = 2))
+
+table2
+```
+
+**Step 3:**  Merge tables 1 and 2 but only where mmr2yn = 1, using **strata** as the merging variable.  
+```{r}
+table3 <- merge(table1, table2[table2$mmr2yn == 1, c("strata", "freq")], by = "strata")
+
+table3
+```
+
+**Step 4:** Tidy up the table by rounding figures and adding in total values.  
+```{r}
+# Rounds value of samplef
+table3$samplef <- round(table3$samplef * 100, digits = 2)
+
+## Adding additional row at end of table
+table3 <- table3[1:12,]
+
+# Label first cell in 12th row as Total
+table3[12,1] <- "Total"
+
+# Calculate sum of population and put value in 12th row, 2nd column
+table3[12,2] <- colSums(table3[1:11, c("population"),drop = F])
+
+# Obtain the unweighted proportion of MMR-2 vaccination coverage
+unweighted <- prop.table(table(vacc_rec$mmr2yn))
+unweighted  <- round(unweighted  * 100, digits = 2)
+unweighted  <- as.data.frame(unweighted) 
+
+# Incorporate the unweighted proportion of value into table 3
+table3[12,6] <- unweighted[2,2]
+```
+```{r, echo = FALSE}
+kable(table3)
+```
+
+Suppose there are only three strata (stratum 11, 12, 21) in the country. Based on the information provided in Table 4.2, calculate the weighted proportion of children vaccinated with MMR-2 in the country (three strata only). 
+
+```{r}
+# Using formula 4.2 and information on Table 4.2, you should have:
+((3282*0.6797) + (1773*0.6388) + (8609*0.7714))/(3282 + 1773 + 8609)
+
+# For the 11 strata in the study, you could type:
+((3282*0.6797) + (1773*0.6388) + (8609*0.7714) + (3609*0.7209) + (24311*0.7824) + (6734*0.8396) + (30345*0.7667) + (12928*0.7214) + (4813*0.6621) + (3069*0.8257) + (1132*0.75)) / (100605)
+```
+
+The above suggests that allowing for the sampling weights, 76% of children received MMR-2. This differs from the simple (not weighted) proportion, which is 75%.   
+
+## Task 4.5 - Estimate vaccination coverage
+You will now estimate the vaccination coverage of children for different vaccines and in different settings, using the **survey** package in R.  
+
+#### Calculate the proportion of children that were fully vaccinated (vacful) and the corresponding 95%CI
+* as if simple random sampling were used  
+* allowing for the weights  
+* allowing for the weights and clustering  
+* allowing for the weights, clustering and stratification
+
+Complete Table 4.4.1 Comment on the results. 
+
+## Help, Task 4.5
+You can use the survey package in R, which allows you to analyse survey data taking into account the sampling design (stratification, multistage sampling, cluster sampling) e.g. calculate proportions, allowing for the weights, stratification and clustering. These commands can be used for means, proportions, ratios and sums, but also for the estimation of regression coefficients (univariate and multivariate regressions).  
+
+You need to use the function **svydesign** to define the design to be applied to the survey.  
+
+More information can be found in R help, but the essentials are summarised below:  
+
+*svydesign(ids, strata = NULL, weights = NULL, data = NULL)*
+
+* **ids**:       designates the name of the variable that contains identifiers for the primary sampling units (e.g. clusters =                 school in this study). Ids take a value  of **~0 or ~1** if there are no clusters 
+* **strata**:    designates the name of the variable that contains identifiers for the strata (e.g. strata = urban/rural areas                 of each region in this study), to allow for stratification
+* **weights**:   designates the variable of the sampling weight used, i.e. allows for the sampling weight of each individual 
+* **data**:      specifies the relevant data frame    
+
+You may use the function **svymean** or **svyciprop** to estimate proportions for **dichotomous variables**. Of note, **syvciprop** provides **more accurate confidence intervals** compared to svymean. However, it doesn't provide the design effect. We will use a combination of svyciprop and svymean to obtain all the elements we need. **svyby** can be used to estimate proportions in different subpopulations (see below for explanations of options for each function).  
+
+
+*svymean(x, design, na.rm = FALSE, deff = FALSE)*
+
+The options for svymean include:
+
+* **x**:       a variable, a formula or matrix 
+* **design**:   the object created using svydesign 
+* **na.rm**:   should cases with missing values be dropped?
+* **deff**:      return the design effect 
+
+*svyciprop(formula, design, level = 0.95, method = c("logit", "likelihood", "asin", "beta", "mean", "xlogit"))*
+
+The options for svyciprop include:
+
+* **formula**:  model formulat specifying a single binary variable 
+* **design**:   the object created using svydesign 
+* **level**:    confidence interval level
+* **method**:   method to be used
+
+*svyby(formula, by, design, FUN, deff = FALSE, vartype = c("se","ci","cv","cvpct","var")*
+
+The options for svyby include:
+
+* **formula,x**:       a variable, a formula or matrix to pass to the function 
+* **by**:   a formula specifying factors that define subsets, or a list of factors 
+* **design**:   the object created using svydesign 
+* **FUN**:    a function taking a formula and survey design object as its first two arguments
+* **deff**:      request a design effect from FUN
+* **vartype**:      report variability in terms of standard error, confidence intervals and more
+
+#### Calculate the simple proportion (unweighted) and 95% CIs
+
+```{r}
+# Make vacful a factor and reorder in order to obtain proportion/ CI
+vacc_rec$vacful <- factor(vacc_rec$vacful, levels = c(1, 0))
+
+# Use prop.test to obtain the proportion and the CI
+simple <- prop.test(table(vacc_rec$vacful))
+
+# Extract the proportion, confidence intervals from the simple table and add 1 as the design effect for a simple proportion
+simple <- rbind(round(simple$estimate * 100, digits = 2),
+                round(simple$conf.int[1] * 100, digits = 2), 
+                round(simple$conf.int[2] * 100, digits = 2),
+                1)
+
+# Make simple a data frame and use the transpose function to switch rows to columns
+simple <- as.data.frame(t(simple))
+
+# Add column names to the simple data frame
+colnames(simple)[1:4] <- c("Proportion", "2.5%", "97.5%","Design effect")
+simple
+```
+
+```{r}
+# We must convert vacful back to a numeric variable for the subsequent calculations, as follows:
+# Factor variables must be first converted to characters and then to numeric
+vacc_rec$vacful <- as.numeric(as.character(vacc_rec$vacful))
+```
+
+#### Calculate a weighted proportion and 95% CIs (taking into account the sampling weights)
+We first need to define the survey design. By specifying that ids = ~1, we ignore clusters in the data.  
+
+```{r}
+design <- svydesign(ids = ~1, weights = ~weight1, data = vacc_rec)
+```
+
+We can obtain the proportion, confidence intervals and design in a multi-step process as below.  
+```{r}
+# NB.any records that contain NAs must be dropped to calculate the proportion using svymean
+# We use svyciprop to calculate proportions and specifically for 95% CI of proportions
+a <- round(svyciprop(~vacful, design, na.rm = T) * 100, digits = 2)
+# Save the 95% CI separately
+b <- round(confint(a) * 100, digits = 2)
+# Use svymean to calculate the design effect
+c <- deff(round(svymean(~vacful, design, na.rm = T, deff = T) * 100, digits = 2))
+# Put them all together with correct labelling
+d <- cbind("Proportion" = a, b, "Design effect" = c)
+d
+```
+
+
+Alternatively, we can use the **svy_prop** function (defined at the start of the case study), which carries out the above 4 steps but keeps the code neater.  
+
+```{r}
+e <- svy_prop("vacful", design = design)
+e
+```
+
+
+#### To estimate the proportion of children that were fully vaccinated, allowing for the weights and clustering:
+To include clustering in the design, we define the primary sampling unit/ids as school.  
+```{r}
+design2 <- svydesign(ids = ~school, weights = ~weight1, data = vacc_rec)
+
+# Use the svy_prop function specifying that design2 should be used
+f <- svy_prop("vacful", design = design2)
+f
+```
+
+#### To estimate the proportion of children that were fully vaccinated, allowing for the weights, clustering and stratification:
+To include stratification in the design, we define that strata equals strata.  
+```{r}
+design3 <- svydesign(ids = ~school, weights = ~weight1, strata = ~strata, data = vacc_rec)
+g <- svy_prop("vacful", design = design3)
+g
+```
+
+To create table 4.4.1, we need to combine all of these elements together.  
+
+```{r}
+# Combine simple with e, f, and g
+table4 <- rbind(simple,e,f,g)
+
+# Round the values
+table4[, 2:4] <- round(table4[, 2:4], digits = 3)
+
+# Add in row names
+rownames(table4) <- c("Simple proportion",
+                      "+ sampling weight",
+                      "+ sampling weight + clustering",
+                      "+ sampling weight + clustering + stratification")
+```
+
+```{r, echo = FALSE}
+kable(table4)
+```
+
+Of note, the CIs and the design effects obtained from R and Stata are not exactly the same, however, their interpretation remains similar.
+
+Estimations are modified when the sampling design is taken into account:  
+
+*  allowing for the sample weight modifies the estimate of vaccination coverage
+*  allowing for the clustering (or multistage design) decreases the precision of the estimate (higher variance and design        effect)
+*  allowing for the stratification improves the precision of the estimate (lower variance and design effect)
+   Note that the point estimate depends on the weights only, while the 95% CIs depend on everything 
+   (weights, stratification and clustering).  
+
+#### Design effects and intraclass correlation coefficient
+
+A design effect of **1.407** suggests that the variability (variance or the square of the standard error) of the estimate under the chosen design is **40.7%** larger than that of the same-sized simple random sampling. Similarly, a design effect of 2.358 suggests that the variability of the estimate allowing for clustering, stratification and sampling weights is 135.8% larger than that would come from the same sample size if simple random sampling were used.  
+
+Rearranging the formula:
+ deff=1+(n-1) · rho   ==> rho=(deff-1)/(n-1) 
+      where deff=2.358 and n=20, you can get intraclass correlation coefficient (rho)=0.071  
+
+You may use this value of rho in sample size calculations in other similar surveys in the future. As 
+mentioned earlier, the rho is the proportion of the total variation in the outcome that is between 
+clusters; this measures the degree of similarity or correlation between subjects within the same cluster. The larger the rho-that is the tendency for subjects within a cluster to be similar-the greater the size of the design effect and the larger the additional number of subjects required to achieve the same precision.  
+      
+Note that in the sample size calculations in session 2, deff and rho were expected to be higher (2 and 0,05, respectively). Hence, the sample size actually achieved was larger and the estimates were more precise than originally expected.    
+
+#### Calculate the vaccination coverage and complete Table 4.4.2
+For example, DTP-3:  
+
+```{r}
+# Weighted vaccine coverage of DTP-3
+dtp <- svy_prop("dtp3yn", design = design3)
+dtp
+
+# Weighted vaccine coverage of DTP-3 by minority group
+dtm <- svyby(~dtp3yn, ~minority,
+             design3,
+             svyciprop, vartype = "ci")
+dtm <- round(dtm[,2:4] * 100, digits = 2)
+dtm
+
+# Weighted vaccine coverage of DTP-3 by area
+dtu <- svyby(~dtp3yn, ~urban, 
+             design3,
+             svyciprop, vartype = "ci")
+dtu <- round(dtu[,2:4] * 100, digits = 2)
+dtu
+```
+
+Creating table 4.4.2 will take a few steps, as outlined below.
+
+**Step 1:** Use a loop to estimate overall vaccination coverage for all vaccines.  
+```{r}
+vars <- c("dtp3yn", "dtp4yn", "dtp5yn", "mmr1yn", "mmr2yn", "hibprmyn", "hibfulyn", "hbv3yn", "mnc1yn", "pne1yn", "var1yn", "vacful", "vactime")
+
+# Create an empty list to store the output of the loop
+output <- list()
+
+# for each variable in vars
+for (var in vars) {
+# Calculate the proportion, 95% CI and deff
+  overall <- svy_prop(var, design = design3)
+  output[[var]] <- overall
+}
+
+# Bind dataframes from the list (output) as rows below each other in a matrix
+output2 <- do.call(rbind, output[1:length(output)]) 
+
+# Transform output2 to a dataframe
+output2 <- as.data.frame(output2)
+
+```
+
+
+**Step 2:** Use a loop to estimate vaccination coverage for DTP-3, complete vaccination and timely vaccination **by minority.**
+```{r, warning = FALSE, message = FALSE}
+vars <- c("dtp3yn", "vacful", "vactime")
+
+# Create an empty list to store the output of the loop
+output3 <- list()
+  
+for (var in vars) {
+# Calculate proportions, 95% CI and deff for vars by minority
+  a <- svyby(as.formula(paste0( "~" , var)),
+             by = ~minority, design3, 
+             svyciprop, vartype = "ci")
+#  Change the column names to facilitate merging
+  colnames(a)[2:4] <- c("Proportion", "2.5%","97.5%")
+  a <- round(a[,2:4]*100, digits = 1)
+  output3[[var]] <- a
+}  
+
+# Bind dataframes from the list (output3) as rows below each other in a matrix
+output3 <- do.call(rbind, output3[1:length(output3)])
+
+# Need to add an empty Design effect variable to be able to combine all of the dataframes later
+output3$`Design effect` <- ""
+```
+
+
+**Step 3:** Use a loop to estimate vaccination coverage for DTP-3, complete vaccination and timely vaccination **by area.**
+
+```{r}
+vars <- c("dtp3yn", "vacful", "vactime")
+
+# Create an empty list to store the output of the loop
+output4 <- list()
+
+for (var in vars) {
+# Calculate proportions, 95% CI and deff for vars by area
+  b <- svyby(as.formula(paste0( "~" , var)),
+             by = ~urban, design3, 
+             svyciprop, vartype = "ci")
+#  Change the column names to facilitate merging  
+  colnames(b)[2:4] <- c("Proportion", "2.5%","97.5%")
+  b <- round(b[,2:4]*100, digits = 1)
+  output4[[var]] <- b 
+}  
+
+output4 <- do.call(rbind, output4[1:length(output4)])
+
+# Create an empty Design effect variable to be able to combine all of the dataframes later
+output4$`Design effect` <- ""
+```
+
+**Step 4:** Combine the tables, while trying to follow the table structure in the manual as much as possible.  
+```{r}
+finaltable <- rbind(output2[1,],
+                    output3[1:4,],
+                    output4[1:2,],
+                    output2[2:12,],
+                    output3[5:8,],
+                    output4[3:4,],
+                    output2[13,],
+                    output3[9:12,],
+                    output4[5:6,])
+```
+
+**Step 5:** Tidy up the table with rownames and rounding of variables (found in the appendix).
+```{r,echo = FALSE}
+# Add appropriate rownames
+rownames(finaltable) <- c("DTP-3 (overall)", "DTP-3 General population", "DTP-3 Roma", "DTP-3 Greek Muslims", "DTP-3 Immigrants", "DTP-3 Rural areas", "DTP-3 Urban areas", "DTP-4 (overall)","DTP-5 (overall)", "MMR-1 (overall)", "MMR-2 (overall)", "HiB- primary (overall)", "HiB- full (overall)", "HepB-3 (overall)", "MNC-1 (overall)", "PCV7-1 (overall)", "Var-1 (overall)", "Complete vaccination (overall)",  "Comp Vacc General population","Comp Vacc Roma", "Comp Vacc Greek Muslims", "Comp Vacc Immigrants", "Comp Vacc Rural areas", "Comp Vacc Urban areas", "Timely vaccination (overall)", "Timely vacc General population", "Timely vacc Roma", "Timely vacc Greek Muslims", "Timely vacc Immigrants", "Timely vacc Rural areas", "Timely vacc Urban areas")
+
+# Design effect needs to be numeric to round the values
+finaltable$`Design effect` <- as.numeric(finaltable$`Design effect`)
+
+# round values
+finaltable[,2:4] <- round(finaltable[,2:4], digits = 2)
+
+# convert NA values to "" 
+finaltable[is.na(finaltable) == T ] <- "" 
+```
+
+```{r, echo = FALSE}
+knitr::kable(finaltable)
+```
+
+
+# Appendix
+### Making table 4.1
+You could use the following code to make a table similar to table 4.1:  
+```{r, eval = F}
+# List your variales of interest
+vars <- c("gender", "urban", "minority", "country1")
+
+# Make an empty list to store output
+output <- list()
+
+# Use the loop to obtain count & proportions of variables in the full sample and by vaccrec, and result of chisq test
+for (var in vars) {
+  full <- big.table(vaccine[,var])
+  combo <- table(vaccine[,var], vaccine$vaccrec)
+  prop <- round(prop.table(combo,2)*100,digits = 2)
+  test <- chisq.test(combo)
+  output[[var]] <- cbind(total,
+                         "Respondents (n)" = combo[,c(2)],
+                         "% respondents" = prop[,c(2)],
+                         "Non-respondents (n)" = combo[,c(1)], 
+                         "% non-respondents" = prop[,c(1)],
+                         Pvalue = round(test$p.value, digits = 3))
+}
+
+output
+
+## Use the Do.call function which will loop over output with rbind to create a neater table
+output2 <- do.call(rbind, output[1:length(output)]) 
+
+# Add in appropriate variable names
+rownames(output2) <- c("Female", "Male", "Rural areas", "Urban areas", "General population", "Roma", "Greek Muslims", "Immigrants", "Other country", "Greece")
+
+# Note that the final order isn't exactly the same as table 4.1
+output2
+```
+
+
+### Tidying up table 4.4.2
+```{r, eval = F}
+# Add appropriate rownames
+rownames(finaltable) <- c("DTP-3 (overall)", "DTP-3 General population", "DTP-3 Roma", "DTP-3 Greek Muslims", "DTP-3 Immigrants", "DTP-3 Rural areas", "DTP-3 Urban areas", "DTP-4 (overall)","DTP-5 (overall)", "MMR-1 (overall)", "MMR-2 (overall)", "HiB- primary (overall)", "HiB- full (overall)", "HepB-3 (overall)", "MNC-1 (overall)", "PCV7-1 (overall)", "Var-1 (overall)", "Complete vaccination (overall)",  "Comp Vacc General population","Comp Vacc Roma", "Comp Vacc Greek Muslims", "Comp Vacc Immigrants", "Comp Vacc Rural areas", "Comp Vacc Urban areas", "Timely vaccination (overall)", "Timely vacc General population", "Timely vacc Roma", "Timely vacc Greek Muslims", "Timely vacc Immigrants", "Timely vacc Rural areas", "Timely vacc Urban areas")
+
+# Design effect needs to be numeric to round the values
+finaltable$`Design effect` <- as.numeric(finaltable$`Design effect`)
+
+# round values
+finaltable[,2:4] <- round(finaltable[,2:4], digits = 2)
+
+# convert NA values to "" 
+finaltable[is.na(finaltable) == T ] <- "" 
+```
+
+
+### Tidying up table output using ReporterRs package
+
+```{r}
+# Functions used to format tables
+label_table <- function(X){
+  setFlexTableBorders(X,inner.vertical = borderProperties(style = "none"),inner.horizontal = borderProperties(style = "none"),outer.vertical = borderProperties(style = "none"),outer.horizontal = borderProperties(width = 2),body = T,header = T)
+} 
+
+label_footer <- function(X){
+  setFlexTableBorders(X,inner.vertical = borderProperties(style = "none"),inner.horizontal = borderProperties(style = "none"),outer.vertical = borderProperties(style = "none"),outer.horizontal = borderProperties(style = "none"),footer = T)
+}
+```
+
+```{r, eval = F}
+# To make publication standard tables through R, you can use the FlexTable function from the ReporteRs package
+table3 <- FlexTable(table3,header.columns = F)
+
+# this adds a new row with those headings and you specify over how many columns each heading should span
+table3 <- addHeaderRow(table3, text.properties = textBold(), value = c("Stratum", "Total number of 1st year pupils", "Number of pupils selected in sample", "Sampling fraction (%)", "Sampling weight", "MMR-2 vaccination coverage (%)"), colspan = c(1,1,1,1,1,1)) 
+
+ #  removed the label around the footer
+table3 <- label_footer(table3)
+
+ # formatted the table so that only the top and lower parts are neatly formatted
+table3 <- label_table(table3) 
+
+ # Can export the table to e.g. powerpoint
+doc1 <- pptx()
+
+doc1 <- addSlide( doc1, "Two Content")
+doc1 <- addTitle( doc1 , 'Table3', level = 1)
+doc1 <- addFlexTable(doc1, flextable = table3)
+writeDoc( doc1, 'N:/MED/IMED-VIE/INFE/Public/CC-INFE-Schmid/EPIET/Output/Table3.pptx')
+
+```
+
+

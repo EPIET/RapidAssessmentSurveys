@@ -1,6 +1,6 @@
 Rapid assessments and surveys in R
 ================
-22 Jänner 2023
+04 June 2023
 
 <!-- README.md is generated from README.Rmd. Please edit that file -->
 
@@ -28,12 +28,12 @@ before using or distributing this case study.
 
 To follow this case study, you will first need the participant pack,
 which can be downloaded
-[here](https://github.com/EPIET/RapidAssessmentSurveys/raw/master/docs/RAS_VCE_R_guide_2022.zip).
+[here](https://github.com/EPIET/RapidAssessmentSurveys/raw/master/docs/RAS_VCE_R_pack.zip).
 
 You can then access the R guide for this case study in two ways:
 
 - Click on [this
-  link](https://epiet.github.io/RapidAssessmentSurveys/RAS_VCE_R_guide_2022.html)
+  link](https://epiet.github.io/RapidAssessmentSurveys/RAS_VCE_R_guide.html)
   to open the guide online in your internet browser (internet connection
   required)
 - The guide is also available in HTML, Microsoft Word and .pdf format in
