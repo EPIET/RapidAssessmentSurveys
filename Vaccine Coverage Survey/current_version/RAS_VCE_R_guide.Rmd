@@ -852,6 +852,12 @@ each stratum within each region. We will then use the
 results in a printable format. This function takes a data frame and 
 formats it nicely. 
 
+
+**Alternative approach with Microsoft Excel:**
+
+If you wish, you can also first try calculating the number of classes and proportions in the Microsoft Excel sheet.  To do this, you will need to apply a formula in the excel sheet, which can be derived from the information supplied above.
+
+
 ***Table 1.2 -** Updated with proportions and number of classes to
 sample per stratum*
 
@@ -928,6 +934,18 @@ the `set.seed()` function - this way if you send your script to someone
 else they would be able to reproduce the same sample. 
 The function `set.seed()` must be used right before the function selecting 
 the sample.
+
+
+**Alternative approach with Microsoft Excel:**
+
+It is also possible to generate 22 random numbers using Microsoft Excel, by following the steps below:
+
+  1. Start Microsoft Excel.
+  2. Use `Format –> Cell –> Number` to set number of decimal places required in the random numbers to be generated (in this case “0 decimal places” is appropriate).
+  3. Use the command `=RANDBETWEEN(1;N)` for numbers from `1` to `N` (for other options, e.g. random numbers from `A` to `B`, see Help).
+  4. Copy and select `Paste special –> Values` for the selected numbers.
+  5. Sort the random numbers by order (using `Data –> Sort`).
+
 
 ***Table 1.3 -** Simple Random Sample of 22 school classes*
 
@@ -1031,6 +1049,7 @@ Questions to answer:
 5.  Limit the number of returned rows to the desired number of units to
     sample (n=22).
 
+
 **R coding tips:**
 
 After calculating the size of the groups to divide the sampling frame
@@ -1044,7 +1063,23 @@ This random number can then be fed into the `dplyr::slice()` command as
 shown below to select every *qth* row of the sampling frame. Note that
 if *q* is small / an early number in the sequence, an excess of rows may
 be selected. If this happens, the returned rows can be limited to the
-desired sample size by using the `dplyr::slice_head()` function:
+desired sample size by using the `dplyr::slice_head()` function.
+
+
+**Alternative approach using Microsoft Excel:**
+
+Alternatively, the process for drawing a systematic sample using Microsoft Excel is as follows:
+
+  1. Divide total sampling population (`102` schools) by the sample size $(102/22=7)$ 
+  2. Choose a random starting point (for `7` the starting point will be chosen randomly from `1` to `7`).
+  3. Select a random number from `1` to `7` using Excel (as above). 
+  4. In `table1_3` of the Microsoft Excel sheet, create a new column at the end called `Selected`.
+  4. Use the new column `Selected` to mark with an `x` the randomly selected first school in the sample.
+  5. Select units (schools) at regular intervals (every 7th school) throughout the rest of the Excel sheet. 
+  6. Mark all the selected schools in the sample in the `Selected` column with an `x`.
+  
+*Note:* In Microsoft Excel it is preferable to create a text marker for selected schools in a new column than to highlight the selected schools with a background colour.  This is because text highlighting with a colour will not be detected by analytical software when the data set is imported, and you may need to compare characteristics of selected and non-selected schools at some point in your analysis.
+
 
 ***Table 1.4 -** Systematic sample of school classes*
 
@@ -1054,7 +1089,7 @@ desired sample size by using the `dplyr::slice_head()` function:
 # (i.e. every nth row to choose):
 sample_n <- as.integer(nrow(class_frame)/22)
 
-# Set seed to ensure you always get produce the same result
+# Set seed to ensure you always produce the same result:
 set.seed(26598)
 
 # Calculate the random starting point for systematic sampling:
@@ -1162,6 +1197,22 @@ this you would have to calculate probabilities for each school:
 
 We opted for using the `pps::sampford()` function, as the documentation
 on methods is more transparent.
+
+
+**Alternative approach with Microsoft Excel:**
+
+To perform PPS sampling using Microsoft Excel, you will need to select schools with probability proportional to size (PPS).  The process for selecting a simple random sample with probability proportional to size in MS Excel is as follows:
+
+  1. Calculate the cumulative number of students by school in the list of schools (total `2586` students).
+  2. Select `12` random numbers (plus some more to accommodate for selection “without replacement”) between `1` and `2586` (the total number of pupils), using the same method that you used for simple random sampling.  The random numbers should be selected in the usual way (see Q1.7). In this case, the 12 random numbers are already provided. 
+  3. Find the schools which correspond to the selected random numbers using their cumulative numbers (see Table 1.5). 
+  4. Select schools *without replacement*. 
+  5. Use only the random numbers necessary to select 12 schools as required (in this example, ignore # 899, 983, 1177): this is legitimate as all numbers are selected at random independently.
+  5. At the end, you should randomly select the same number of 1st grade students from each selected school to ensure that each child has the same inclusion probability (self-weight).
+
+
+Below you will find the completed version of Table 1.5:
+
 
 ***Table 1.5 -** School classes selected by Probability Proportional to
 Size sampling*
