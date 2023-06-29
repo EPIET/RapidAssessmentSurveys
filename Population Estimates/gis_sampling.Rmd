@@ -1,7 +1,7 @@
 ---
 title: "Spatial sampling and population estimates with R"
 author: "Alexander Spina and Alexandre Blake (Applied Epi)"
-date: "July 2022"
+date: "July 2023"
 output: 
   html_document:
     code_folding: show
@@ -62,6 +62,7 @@ pacman::p_load(
   leaflet, # making interactive maps
   mapedit, # interactively drawing points and points on maps
   sf,      # working with spatial data
+  osmdata, # getting data from OpenStreetMap
   here,    # file paths relative to R project root folder 
   dplyr,   # data management
   rio      # import data
@@ -173,16 +174,19 @@ in to the leaflet map below with your mouse.
 
 ```{r camp_location}
 kario_camp <- leaflet() %>% 
-          # start an interactive plot (of the whole world)
-					addTiles() %>%
-          # center the leaflet map on the middle of our area of interest 
-					setView( 
-						lng = 26.208, 
-						lat = 11.1496,
-						zoom = 15) %>% 
-          # add in background images of the area from open street map 
-          # we use the humanitarian version for this setting as there is more info
-					addProviderTiles("OpenStreetMap.HOT")
+  
+  # start an interactive plot (of the whole world)
+  addTiles() %>%
+  
+  # center the leaflet map on the middle of our area of interest 
+  setView(lng = 26.208, 
+          lat = 11.1496,
+          zoom = 15) %>% 
+  
+  # Add in background images of the area from open street map 
+  # We use the humanitarian version for this setting as there is more info
+  addProviderTiles("OpenStreetMap.HOT")
+
 ```
 
 You can view and interact with your map simply by calling the object you
@@ -190,7 +194,7 @@ saved to, as below.
 
 ```{r camp_view}
 
-# view your map interactively in browser 
+# View your map interactively in browser 
 kario_camp
 
 ```
@@ -210,14 +214,14 @@ need additional help.
 
 ```{r camp_polygon_draw, eval = FALSE}
 
-# interactively draw a shape on your map
-# your polygon is saved in the object "polygon" (which is a list)
-# more specifically in the slot "finished" of the object polygon.
-polygon <- editMap(kario_camp)
+# Interactively draw a shape on your map
+# Your polygon is saved in the object "polygon" (which is a list)
+# More specifically in the slot "finished" of the object polygon.
+kario_polygon <- editMap(kario_camp)
 
 
-# access your polygon 
-polygon <- polygon$finished
+# Access your polygon 
+kario_polygon <- kario_polygon$finished
 ```
 
 #### Task C: Read in an existing polygon (optional)
@@ -239,9 +243,9 @@ knows to pull in the others.
 ```{r camp_polygon_read}
 
 # read in your shapefile
-polygon <- read_sf(here::here("data", 
-                              "SDN_Kario_17Feb2019_polygon", 
-                              "SDN_Kario_17Feb2019_polygon.shp"))
+kario_polygon <- read_sf(here::here("data", 
+                                    "SDN_Kario_17Feb2019_polygon", 
+                                    "SDN_Kario_17Feb2019_polygon.shp"))
 
 ```
 
@@ -250,16 +254,20 @@ You could then view the polygon to your existing map.
 ```{r camp_polygon_plot}
 
 kario_camp <- kario_camp %>% 
-  # plot your polygon on top of the existing tiles
+  
+  # Plot your polygon on top of the existing tiles
   addPolygons(
-    # specify your sf object
-		data  = polygon,
-		# color the border red
+    
+    # Specify your sf object
+		data  = kario_polygon,
+		
+		# Color the border red
 		color = "red",
-		# make the middle see-through
+		
+		# Make the middle see-through
 		fillOpacity = 0)
 
-# view your map
+# View the map:
 kario_camp
 
 ```
@@ -294,24 +302,133 @@ need additional help.
 
 ```{r household_points, eval = FALSE}
 
-# interactively draw a shape on your map
-# your points are saved in the object "households" (which is a list)
-# more specifically in the slot "finished" of the object households
-households <- editMap(kario_camp)
+# Interactively draw a shape on your map
+# Your points are saved in the object "households" (which is a list)
+# More specifically in the slot "finished" of the object households
+households <- editMap(kario_map)
 
-## access your points 
+# Access your points 
 households <- households$finished
 ```
 
-#### Task B: Read in existing rooftop points (optional)
+
+#### Task B: Automatically identify rooftops (optional)
 
 *This is an alternative step that replaces marking roofs in the previous
 task*
 
-The full roofs identification of the refugee camp was in fact carried
-out semi-automatically, manually validated and saved in a shapefile. As
-with the polygon above we can use the `sf` package to read in the points
-to R.
+It is possible to identify each rooftop in the camp automatically, using an OpenStreetMap feature that identifies buildings from satellite imagery.  We can do this in R with the package `osmdata`.
+
+First, we need to define a boundary box within which all the building data will be retrieved.  We can get the boundary box for the Kario camp polygon as below:
+
+```{r kario_boundarybox}
+
+# Get a boundary box for Kario camp from the shapefile:
+kario_bbox <- sf::st_bbox(kario_polygon)
+
+```
+
+
+Now we can retrieve the geometries (polygons and points) for all the buildings that fall within this boundary box.  We use the `opq` function to query OpenStreetMap and select "building" as the feature that we want to retrieve:
+
+```{r kario_buildings}
+
+# Get the builing points within the boundary box:
+buildings <- osmdata::opq(bbox = kario_bbox) %>%
+  
+  # Get the buildings in this boundary box:
+  osmdata::add_osm_feature(key = "building") %>%
+  
+  # Convert the building points to an osmdata_sf object:
+  osmdata::osmdata_sf() 
+
+
+```
+
+
+If you inspect the contents of `buildings` you can see that it is a list of different objects, including two data.frames: `osm_points` and `osm_polygons`.  The coordinates in `osm_points` define the polygons for each building.  Note that this means there are multiple points per building (one point for each corner in the shape that makes up the building).  We can already see the outlines of the buildings on the map tiles however, so what we really need are a single pair of coordinates for each building (to represent one household).  We can get this by calculating the centroid for each building polygon:
+
+```{r building_centroids}
+
+# Select the osm_polygons data.frame:
+households_osm <- buildings$osm_polygons %>% 
+  
+  # Convert it to a simple features object:
+  sf::st_as_sf() %>% 
+  
+  # Get centroids (points) for each building polygon:
+  mutate(points = sf::st_centroid(geometry))
+
+
+```
+
+
+Now we can add the points representing each household to the map:
+
+```{r map_buildings}
+
+# Update the map:
+kario_map <- kario_camp %>% 
+  
+  # Add the points representing buildings to the map:
+  addCircleMarkers(
+    
+    # Get building points to plot from the points column:
+    data = households_osm$points,  
+    
+    # Specify the radius of the circle markers:
+    radius = 5,                                          
+    
+    )
+
+
+# View the updated map:
+kario_map
+
+```
+
+
+Currently some of the buiding points are located outside the Kario camp polygon - this is because the query we used to fetch the building data used the boundary box of the polygon, not the polygon itself.  We can remove the points outside the polygon by trimming the data with the `st_intersection()` function.  This takes two arguments - x (the points data that we want to trim) and y (the polygon data that we want to use for the trimming).
+
+
+```{r remove_excess_buildings}
+
+households_osm <- households_osm %>% 
+
+  # Trim to points which are inside the Kario camp polygon:
+  sf::st_intersection(y = kario_polygon) %>% 
+  
+  # St_intersection adds an extra id column we don't need:
+  select(-id)
+
+
+```
+
+
+Now we can redraw the map and check it to make sure the extra points have been removed:
+
+```{r kario_map_noexcess}
+
+# Update the map of Kario camp:
+kario_map <- kario_camp %>% 
+  
+  # Plot the points representing buildings ontop:
+  addCircleMarkers(
+    data = households_osm$points,                    
+    radius = 5,             
+    )
+
+
+# View the map:
+kario_map
+
+```
+
+There is still a problem, however.  The automated process has identified each building from satellite imagery, but not all of these buildings are occupied, and some of them are not households but have other functions (such as central storage facilities or bathroom blocks). In addition, some new families have arrived since the last satellite image was taken. 
+
+To ensure that each point represents an occupied household, the automatically generated points were validated by a field survey team and saved in a shapefile.  
+
+As with the polygon above we can use the `sf` package to read in the points to R.
 
 An additional complication here is that the points are not stored as
 longitude and latitude, but as x and y coordinates. For this we use the
@@ -322,25 +439,43 @@ Maps).
 
 ```{r camp_points_read}
 
-# read in your shapefile
-households <- read_sf(here::here("data", 
-                              "SDN_Kario_17Feb2019_roofs", 
-                              "SDN_Kario_17Feb2019_roofs.shp")) %>% 
-  # re-project x and y coordinates to be longitude and latitude. 
-  # note that crs 4326 is a code for WGS84
+# Read in your shapefile
+households_validated <- sf::read_sf(
+  here::here("data", 
+             "SDN_Kario_17Feb2019_roofs",
+             "SDN_Kario_17Feb2019_roofs.shp")) %>% 
+  
+  # Re-project x and y coordinates to be longitude and latitude. 
+  # Note that crs 4326 is a code for WGS84
   st_transform(crs = 4326)
+
 ```
 
-You could then view the polygon to your existing map.
+
+Once again, we can redraw the map, this time using the manually validated points from the shapefile:
+
 
 ```{r camp_points_plot}
 
-kario_camp %>% 
-  # add circles for each point 
-  # (zoom in to see how they fit with rooftops)
-  addCircleMarkers(data = households)
+# Update the map of Kario camp:
+kario_map <- kario_camp %>% 
+  
+  # Plot the points representing buildings ontop:
+  addCircleMarkers(
+    data = households_validated,                    
+    radius = 5,             
+    )
+
+
+# View the map:
+kario_map
+
 
 ```
+
+
+
+
 
 ## Step 3: *Sample*
 
@@ -365,7 +500,7 @@ Kario survey, 400 roofs were sampled in order to do Roof-Simple-Random.
 ```{r sample_points}
 
 # select 50 random points from your polygon (i.e. not necessarily households)
-random_points <- st_sample(polygon, 50) %>% 
+random_points <- st_sample(kario_polygon, 50) %>% 
   # change back to a simple features dataframe (sampling made it a "collection")
   st_as_sf()
 
@@ -374,7 +509,7 @@ random_points <- st_sample(polygon, 50) %>%
 kario_camp %>% 
   # add circles for each point 
   # (zoom in to see how they fit with rooftops)
-  addCircleMarkers(data = random_points, color = "green")
+  addCircleMarkers(data = random_points, color = "green", radius = 5)
 
 ```
 
@@ -390,6 +525,56 @@ does not account for this. While it is not the case in this tutorial, in
 other situations you might have more than one polygon and need to sample
 roofs separately for each polygon.
 
+We will first try to sample from the OSM household (unvalidated) data:
+
+```{r sample_roofs_osm}
+
+# Select 50 random roofs from the household_osm data:
+random_roofs_osm <- st_sample(households_osm, 50)
+
+# Visualise the selected points on a map:
+kario_camp %>% 
+  
+  # Add circles for each point 
+  addCircleMarkers(data = random_roofs_osm, 
+                   color = "orange", 
+                   radius = 5)
+
+
+```
+
+
+For comparison, we can also select 50 random points from the validated data.  Note that this data requires some extra formatting before we can visualise it:
+
+```{r sample_roofs_validated}
+# Select 50 random points from your households
+random_roofs_val <- st_sample(households_validated, 50) %>%
+  
+  # Transform back to points 
+  # (this comes out as a multi-point object, which is too complex)
+  st_cast("POINT") %>% 
+  
+  # Set the coordinate reference system for the points 
+  # Note that crs 4326 is a code for WGS84
+  st_set_crs(4326) %>% 
+  
+  # Change back to a simple features data.frame (multi-point made it a "collection")
+  st_as_sf()
+  
+
+# Visualise the selected points 
+kario_camp %>% 
+  
+  # Add circles for each point 
+  addCircleMarkers(data = random_roofs_val, 
+                   color = "orange", 
+                   radius = 5)
+
+
+
+```
+
+
 Notice here when you visualise that the points are much closer to where
 the population is actually situated in the camp (because you are
 sampling households rather than any space within the camp boundary) -
@@ -397,27 +582,6 @@ this likely makes conducting your survey logistically simpler. In
 addition, you only need to survey half as many houses compared to
 T-Square (because you don't need to find the next closest house).
 
-```{r sample_roofs}
-
-# select 50 random points from your households
-random_roofs <- st_sample(households, 50) %>%
-  # transform back to points 
-  # (this comes out as a multipoint object, which is too complex)
-  st_cast("POINT") %>% 
-  # set the coordinate reference system for the points 
-  # note that crs 4326 is a code for WGS84
-  st_set_crs(4326) %>% 
-  # change back to a simple features dataframe (multipoint made it a "collection")
-  st_as_sf()
-  
-
-# Visualise the selected points 
-kario_camp %>% 
-  # add circles for each point 
-  # (zoom in to see how they fit with rooftops)
-  addCircleMarkers(data = random_roofs, color = "orange")
-
-```
 
 ## Step 4: *Export*
 
@@ -437,19 +601,25 @@ either. To save our points we use the `st_write()` function from the
 
 ```{r export_points_gpx, results = 'hide'}
 
-# export sampled points to gpx
+# Export sampled points to gpx:
 random_points %>%
+  
   # gpx has a specific format which it accepts
-  # to meet this format we have to give a name to label each of the points
-  # note that this needs to be a lower case "name" 
-  # we consecutively number the points by combining "point" with the number of the row
+  # To meet this format we have to give a name to label each of the points
+  # Note that this needs to be a lower case "name" 
+  # We consecutively number the points by combining "point" with the number of the row
 	mutate(name = paste0("point-", 1:n())) %>%
+  
+  # Now we can write the labelled points to a .gpx file:
 	st_write(
-	  # define the file path and extension (gpx)
-		dsn    = here::here("data", "random_points.gpx"),
-		# define which format to use (this could be guessed by the function)
+	  
+	  # Define the file path and extension (gpx)
+		dsn = here::here("data", "random_points.gpx"),
+		
+		# Define which format to use (this could be guessed by the function)
 		driver = "GPX",
-		# overwrite any previously existing files. 
+		
+		# Overwrite any previously existing files. 
 		delete_dsn = TRUE)
 
 
@@ -460,34 +630,46 @@ We could similarly use `st_write()` to save to a `.shp` or a `.kml`
 
 ```{r export_points_other, eval = FALSE}
 
-# export sampled points to shp 
+# Export sampled points to shp 
 random_points %>%
-  # it can be useful to give a name to label each of the points
-  # we consecutively number the points by combining "point" with the number of the row
+  
+  # It can still be useful to give a name to label each of the points
+  # We consecutively number the points by combining "point" with the number of the row
 	mutate(Name = paste0("point-", 1:n())) %>%
-	st_write(
-	  # define the file path and extension (kml)
-		dsn    = here::here("data", "random_points.shp"),
-		# overwrite any previously existing files. 
+	
+  # Now we can write the labelled points to a shapefile:
+  st_write(
+	  
+    # Define the file path and extension (kml)
+		dsn = here::here("data", "random_points.shp"),
+		
+		# Overwrite any previously existing files. 
 		delete_dsn = TRUE)
 
 
-# export sampled points to kml 
+# Export sampled points to kml 
 random_points %>%
+  
   # kml has a specific format which it accepts
-  # to meet this format we have to give a name to label each of the points
-  # note that this needs to be a lower case "Name" 
-  # we consecutively number the points combining "point" with the number of the row
+  # To meet this format we have to give a name to label each of the points
+  # Note that this needs to be a lower case "Name" 
+  # We consecutively number the points combining "point" with the number of the row
 	mutate(Name = paste0("point-", 1:n())) %>%
-	st_write(
-	  # define the file path and extension (kml)
-		dsn    = here::here("data", "random_points.kml"),
-		# define which format to use (this could be guessed by the function)
+	
+  # Now we can write the labelled points to a kml file:
+  st_write(
+	  
+    # Define the file path and extension (kml)
+		dsn = here::here("data", "random_points.kml"),
+		
+		# Define which format to use (this could be guessed by the function)
 		driver = "kml",
-		# overwrite any previously existing files. 
+		
+		# Overwrite any previously existing files. 
 		delete_dsn = TRUE)
 
 ```
+
 
 #### Task B: Transfer the sampled points
 
@@ -518,12 +700,13 @@ and open the Garmin eTrex device until the .../GPX/... folder.\
 Copy-paste the saved gpx file from your computer hard drive to the GPX
 folder of the Garmin eTrex device.
 
-## Step 4: *Calculate*
+
+## Step 5: *Calculate*
 
 ### Objective
 
 The objective of this step is to calculate your population estimates
-using T-square and then Roof-Simple-Random.
+using T-square and then the Roof-Simple-Random method.
 
 #### Task A: Enter T-Square data
 
@@ -599,7 +782,7 @@ our case the area of Kario camp (in *m^2^*). We can do this using the
 
 ## calculate the area of within the polygon and return as a numeric
 ## otherwise it is returned as a measurement (with m2 on the end)
-camp_area <- st_area(polygon) %>% 
+camp_area <- st_area(kario_polygon) %>% 
   as.numeric()
 
 ## view your numbers
@@ -643,7 +826,7 @@ separate point objects.
 first_point <- survey_data %>% 
   select(gps_point) %>% 
   ## split in to a latitude and longitude column 
-  tidyr::separate(gps_point,into = c("lat","lon"), sep=", ") %>%
+  tidyr::separate(gps_point,into = c("lat","lon"), sep = ", ") %>%
   ## change columns to numeric
   mutate(across(c(lat, lon), as.numeric)) %>%
   ## set as sf points and define the crs
@@ -652,14 +835,14 @@ first_point <- survey_data %>%
 ## extract the first randomly sampled points
 second_point <- survey_data %>% 
   select(nearest_house_gps_point) %>% 
-  tidyr::separate(nearest_house_gps_point,into = c("lat","lon"), sep=", ") %>%
+  tidyr::separate(nearest_house_gps_point,into = c("lat","lon"), sep = ", ") %>%
   mutate(across(c(lat, lon), as.numeric)) %>%
   st_as_sf(coords = c("lat","lon"), crs = 4326)
 
 ## extract the first randomly sampled points
 third_point <- survey_data %>% 
   select(second_house_gps_point) %>% 
-  tidyr::separate(second_house_gps_point,into = c("lat","lon"), sep=", ") %>%
+  tidyr::separate(second_house_gps_point,into = c("lat","lon"), sep = ", ") %>%
   mutate(across(c(lat, lon), as.numeric)) %>%
   st_as_sf(coords = c("lat","lon"), crs = 4326)
 
@@ -803,7 +986,7 @@ averages <- survey_data %>%
   summarise(across(c(under_five, five_plus, overall), mean))
 
 ## pull the number of households from the shapefile 
-num_hh <- nrow(households)
+num_hh <- nrow(households_validated)
 
 ## multiply the averages by the number of houses 
 population <- averages * num_hh
@@ -835,7 +1018,7 @@ You can read in these files with the following code.
 
 ```{r read_gpx, eval = FALSE}
 
-## read in a track from osmand
+## Read in a track from osmAnd
 polygon <- st_read(
   dsn = here::here("data", "track.gpx")
 )
